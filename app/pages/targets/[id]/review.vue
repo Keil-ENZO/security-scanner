@@ -9,7 +9,7 @@ interface Review {
   behindBy: number
   commits: { sha: string, message: string, author: string, date: string }[]
   files: { filename: string, status: string, additions: number, deletions: number, patch: string | null }[]
-  checks: { state: string, preview: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
+  checks: { state: string, preview: string | null, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
   pr: { number: number, url: string, draft: boolean } | null
   scans: { base: { id: number } | null, branch: { id: number, sha: string | null } | null, runningId: number | null, upToDate: boolean }
   diff: { resolved: CodeFinding[], introduced: CodeFinding[], remaining: number } | null
@@ -70,6 +70,7 @@ const blockers = computed(() => {
   if (!d.scans.upToDate) out.push('Le dernier commit de la branche n’a pas été scanné')
   if (d.checks.state === 'pending') out.push('Preview et checks en cours')
   if (d.checks.state === 'failure') out.push('Preview ou checks en échec')
+  if (d.checks.state === 'unavailable') out.push('Statut de la preview illisible : voir la permission du jeton')
   if (d.diff?.introduced.length) out.push('La branche introduit de nouveaux findings')
   return out
 })
@@ -112,9 +113,9 @@ onUnmounted(() => clearInterval(timer))
         <NuxtLink v-if="data.scans.branch" :to="`/scans/${data.scans.branch.id}`" class="mono small-link">scan #{{ data.scans.branch.id }}</NuxtLink>
         <button v-if="!data.scans.runningId && !data.scans.upToDate" class="ghost" :disabled="!!acting" @click="scanBranch">▶ Scanner</button>
       </div>
-      <div :class="['step', data.checks.state === 'success' ? 'ok' : data.checks.state === 'failure' ? 'ko' : data.checks.state === 'pending' ? 'wait' : 'todo']">
+      <div :class="['step', data.checks.state === 'success' ? 'ok' : ['failure', 'unavailable'].includes(data.checks.state) ? 'ko' : data.checks.state === 'pending' ? 'wait' : 'todo']">
         <span class="label">02 · Preview</span>
-        <strong>{{ { success: 'Verte', failure: 'En échec', pending: 'En cours', none: 'Aucun check' }[data.checks.state] }}</strong>
+        <strong>{{ ({ success: 'Verte', failure: 'En échec', pending: 'En cours', none: 'Aucun check', unavailable: 'Illisible' } as Record<string, string>)[data.checks.state] }}</strong>
         <a v-if="data.checks.preview" :href="data.checks.preview" target="_blank" rel="noopener noreferrer" class="mono small-link">↗ ouvrir la preview</a>
       </div>
       <div :class="['step', data.pr ? 'ok' : 'todo']">
@@ -130,6 +131,7 @@ onUnmounted(() => clearInterval(timer))
       </div>
     </section>
     <p v-if="actionError" class="error">✕ {{ actionError }}</p>
+    <p v-if="data.checks.warning" class="error">✕ {{ data.checks.warning }}</p>
     <ul v-if="blockers.length" class="blockers mono">
       <li v-for="b in blockers" :key="b">✕ {{ b }}</li>
     </ul>

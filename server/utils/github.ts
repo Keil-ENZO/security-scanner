@@ -30,9 +30,26 @@ export async function githubApi<T>(path: string, opts: { method?: 'GET' | 'POST'
     })
   }
   catch (err: any) {
-    throw createError({ statusCode: 502, message: `GitHub : ${err?.data?.message ?? err?.message ?? 'erreur'}` })
+    // Le chemin dit quelle permission du jeton manque
+    const route = path.replace(/^\/repos\/[^/]+\/[^/]+/, '').split('?')[0] || '/'
+    const hint = PERMISSION_HINT.find(([re]) => re.test(route))?.[1]
+    const status = err?.response?.status ?? err?.statusCode
+    const detail = err?.data?.message ?? err?.message ?? 'erreur'
+    throw createError({
+      statusCode: 502,
+      message: `GitHub ${opts.method ?? 'GET'} ${route} : ${detail}${status === 403 && hint ? `. Permission du jeton à ajouter : ${hint}` : ''}`,
+    })
   }
 }
+
+const PERMISSION_HINT: [RegExp, string][] = [
+  [/^\/commits\/[^/]+\/status/, 'Commit statuses, lecture'],
+  [/^\/commits\/[^/]+\/check-runs/, 'Checks, lecture'],
+  [/^\/pulls\/\d+\/merge/, 'Contents et Pull requests, écriture'],
+  [/^\/pulls/, 'Pull requests, lecture et écriture'],
+  [/^\/git\/refs/, 'Contents, écriture'],
+  [/^\/(compare|branches)/, 'Contents, lecture'],
+]
 
 export interface TargetRepo { id: number, name: string, repo: string, owner: string }
 
@@ -60,11 +77,16 @@ export async function pullForBranch(t: TargetRepo, ref: string) {
 }
 
 // Statut de la preview Vercel et des checks d'un commit : failure > pending > success > none
-export interface Checks { state: string, preview: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
+export interface Checks { state: string, preview: string | null, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
 
 export async function checksFor(repo: string, sha: string): Promise<Checks> {
+  let warning: string | null = null
   const [status, runs] = await Promise.all([
-    githubApi<{ state: string, total_count: number, statuses: { context: string, state: string, target_url: string | null, description: string | null }[] }>(`/repos/${repo}/commits/${sha}/status`),
+    githubApi<{ state: string, total_count: number, statuses: { context: string, state: string, target_url: string | null, description: string | null }[] }>(`/repos/${repo}/commits/${sha}/status`)
+      .catch((err) => {
+        warning = err.message
+        return { state: 'unknown', total_count: 0, statuses: [] }
+      }),
     githubApi<{ check_runs: { name: string, status: string, conclusion: string | null, html_url: string }[] }>(`/repos/${repo}/commits/${sha}/check-runs`).catch(() => ({ check_runs: [] })),
   ])
   const items = [
@@ -76,11 +98,13 @@ export async function checksFor(repo: string, sha: string): Promise<Checks> {
       description: r.conclusion,
     })),
   ]
+  // Sans les statuts, on ne sait pas si la preview est verte : c'est bloquant
+  if (warning) return { state: 'unavailable', preview: null, items, warning }
   const state = items.some(i => i.state === 'failure') ? 'failure'
     : items.some(i => i.state === 'pending') ? 'pending'
       : items.length ? 'success' : 'none'
   const preview = status.statuses.find(s => /vercel/i.test(s.context) && s.state === 'success')?.target_url ?? null
-  return { state, preview, items }
+  return { state, preview, items, warning: null }
 }
 
 // Dernier scan terminé d'une branche, NULL pour la branche par défaut

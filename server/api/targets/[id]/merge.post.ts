@@ -15,8 +15,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, message: 'Le dernier commit de la branche n’a pas été scanné' })
   }
   const checks = await checksFor(t.repo, pr.head.sha)
-  if (checks.state === 'failure' || checks.state === 'pending') {
-    throw createError({ statusCode: 409, message: `Checks ${checks.state === 'pending' ? 'en cours' : 'en échec'}` })
+  if (checks.state !== 'success' && checks.state !== 'none') {
+    const reason = { pending: 'en cours', failure: 'en échec', unavailable: 'illisibles' }[checks.state] ?? checks.state
+    throw createError({ statusCode: 409, message: `Checks ${reason}${checks.warning ? ` : ${checks.warning}` : ''}` })
   }
 
   // sha : GitHub refuse le merge si un commit est arrivé entre-temps
