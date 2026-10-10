@@ -50,12 +50,27 @@ export function useDb() {
       remediation TEXT
     );
     CREATE INDEX IF NOT EXISTS findings_scan ON findings(scan_id);
+
+    CREATE TABLE IF NOT EXISTS fixes (
+      id INTEGER PRIMARY KEY,
+      scan_id INTEGER NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'queued',
+      pr_url TEXT,
+      summary TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at TEXT
+    );
   `)
   const columns = db.prepare('PRAGMA table_info(scans)').all() as { name: string }[]
   if (!columns.some(c => c.name === 'batch')) db.exec('ALTER TABLE scans ADD COLUMN batch TEXT')
   // Un redémarrage coupe les scans en cours : la file vit en mémoire
   db.prepare(`
     UPDATE scans SET status = 'failed', error = 'Interrompu par un redémarrage', finished_at = datetime('now')
+    WHERE status IN ('queued', 'running')
+  `).run()
+  db.prepare(`
+    UPDATE fixes SET status = 'failed', error = 'Interrompu par un redémarrage', finished_at = datetime('now')
     WHERE status IN ('queued', 'running')
   `).run()
   return db

@@ -9,20 +9,25 @@ interface TargetRow {
   auth_header: string | null
 }
 
-// Un seul scan à la fois : la file vit en mémoire
+// Une seule tâche à la fois, scan ou correction : la file vit en mémoire
 let queue: Promise<unknown> = Promise.resolve()
+
+export function schedule<T>(job: () => Promise<T>) {
+  const done = queue.then(job)
+  queue = done.catch(() => {})
+  return done
+}
 
 export function enqueueScan(targetId: number, origin: 'manuel' | 'hebdo', batch: string | null = null) {
   const { lastInsertRowid } = useDb()
     .prepare('INSERT INTO scans (target_id, origin, batch) VALUES (?, ?, ?)')
     .run(targetId, origin, batch)
   const scanId = Number(lastInsertRowid)
-  const done = queue.then(() => runScan(scanId))
-  queue = done.catch(() => {})
+  const done = schedule(() => runScan(scanId))
   return { scanId, done }
 }
 
-const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
+export const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 async function runScan(scanId: number) {
   const db = useDb()

@@ -40,6 +40,18 @@ node scripts/hash-password.mjs
 pnpm dev
 ```
 
+## Corriger
+
+Le bouton « Corriger » d'un scan ouvre une pull request. Rien n'est poussé sur la branche par défaut.
+
+- **Dépendances npm.** Une dépendance directe monte dans `package.json`. Une transitive reçoit un `override` limité à la version vulnérable, `"proxy-addr@2.0.7": "2.0.8"`. Une version majeure sur une transitive n'est jamais forcée.
+- **Lockfile** régénéré par `npm install --package-lock-only --ignore-scripts` : aucun code du dépôt n'est exécuté.
+- **Vérification.** Trivy repasse sur la branche. Seul ce qu'il ne voit plus est marqué corrigé.
+- **Headers HTTP** ajoutés dans `vercel.json`, seulement ceux qui ne cassent rien. CSP et `Cross-Origin-*` restent manuels.
+- **Le LLM local** ne touche pas au code. Il écrit dans la PR ce qu'il faut tester dans la preview.
+
+Le jeton GitHub doit alors avoir Contents et Pull requests en écriture. `git` tourne sans config globale ni système : aucun autre identifiant que ce jeton ne peut servir.
+
 ## Déclenchement par Hermes
 
 Un cron Hermes en mode `--no-agent`, sans LLM :
@@ -58,7 +70,7 @@ Image avec les trois scanners, checksums vérifiés. Écoute sur `127.0.0.1:3003
 ```yaml
 services:
   security-scanner:
-    build: https://github.com/Keil-ENZO/security-scanner.git#v0.1.4
+    build: https://github.com/Keil-ENZO/security-scanner.git#v0.2.0
     restart: unless-stopped
     network_mode: host
     env_file: .env

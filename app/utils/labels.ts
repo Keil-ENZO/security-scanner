@@ -5,6 +5,7 @@ export const STATUS_LABEL: Record<string, string> = {
   running: 'En cours',
   done: 'Terminé',
   failed: 'Échec',
+  nothing: 'Rien à faire',
 }
 
 // SQLite renvoie de l'UTC sans fuseau : affichage à l'heure de Paris

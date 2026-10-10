@@ -1,9 +1,10 @@
 <script setup lang="ts">
 interface Finding { id: number, tool: string, severity: string, title: string, rule_id: string | null, cve: string | null, cwe: string | null, cvss: number | null, location: string | null, description: string | null, remediation: string | null }
+interface Fix { id: number, status: string, pr_url: string | null, summary: string | null, error: string | null, created_at: string }
 interface Scan { id: number, target: string, repo: string | null, url: string | null, status: string, origin: string, error: string | null, summary: string | null, created_at: string, finished_at: string | null }
 
 const route = useRoute()
-const { data, refresh } = await useFetch<{ scan: Scan, findings: Finding[] }>(`/api/scans/${route.params.id}`)
+const { data, refresh } = await useFetch<{ scan: Scan, findings: Finding[], fixes: Fix[] }>(`/api/scans/${route.params.id}`)
 
 const tool = ref('')
 const severity = ref('')
@@ -26,7 +27,21 @@ const report = computed(() => {
   return { verdict, items }
 })
 
-const running = computed(() => ['queued', 'running'].includes(data.value?.scan.status ?? ''))
+const fixing = computed(() => data.value?.fixes.some(f => f.status === 'queued' || f.status === 'running') ?? false)
+const running = computed(() => ['queued', 'running'].includes(data.value?.scan.status ?? '') || fixing.value)
+const canFix = computed(() => data.value?.scan.status === 'done' && !!data.value.scan.repo && !fixing.value)
+const fixError = ref('')
+
+async function fix() {
+  fixError.value = ''
+  try {
+    await $fetch(`/api/scans/${route.params.id}/fix`, { method: 'POST' })
+    await refresh()
+  }
+  catch (err: any) {
+    fixError.value = err?.data?.message ?? 'Erreur'
+  }
+}
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   timer = setInterval(() => running.value && refresh(), 5000)
@@ -49,7 +64,9 @@ onUnmounted(() => clearInterval(timer))
           <span>◷ {{ formatDate(data.scan.created_at) }}</span>
         </div>
       </div>
+      <button v-if="canFix" class="fix-btn" @click="fix">⚒ Corriger</button>
     </section>
+    <p v-if="fixError" class="error">✕ {{ fixError }}</p>
 
     <section class="kpis sev-kpis">
       <button
@@ -64,6 +81,21 @@ onUnmounted(() => clearInterval(timer))
 
     <section v-if="running" class="panel scanning">
       <span class="spinner" /> Analyse en cours. Quelques minutes, jusqu'à une demi-heure pour un site.
+    </section>
+
+    <section v-for="f in data.fixes" :key="f.id" :class="['panel', 'fix-panel', f.status]">
+      <div class="panel-head">
+        <p class="label">// Correction #{{ f.id }} · {{ formatDate(f.created_at) }}</p>
+        <StatusPill :status="f.status" />
+      </div>
+      <p v-if="f.status === 'queued' || f.status === 'running'" class="scanning">
+        <span class="spinner" /> Branche, mises à jour, nouvelle passe de Trivy, puis pull request.
+      </p>
+      <ul v-if="f.summary" class="fix-list">
+        <li v-for="(line, i) in f.summary.split('\n')" :key="i" :class="{ ok: line.startsWith('✓'), ko: line.startsWith('✕') }">{{ line }}</li>
+      </ul>
+      <pre v-if="f.error" class="error">{{ f.error }}</pre>
+      <a v-if="f.pr_url" :href="f.pr_url" target="_blank" rel="noopener noreferrer" class="pr-link">↗ Voir la pull request</a>
     </section>
 
     <section v-if="data.scan.error" class="panel alert">

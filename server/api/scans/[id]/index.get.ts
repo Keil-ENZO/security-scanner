@@ -10,5 +10,6 @@ export default defineEventHandler((event) => {
     SELECT * FROM findings WHERE scan_id = ?
     ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END, tool
   `).all(id)
-  return { scan, findings }
+  const fixes = db.prepare('SELECT * FROM fixes WHERE scan_id = ? ORDER BY id DESC').all(id)
+  return { scan, findings, fixes }
 })
