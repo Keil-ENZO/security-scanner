@@ -21,5 +21,8 @@ export default defineNuxtConfig({
     hermesToken: '',
     // Adresse de l'interface, pour les liens du rapport
     publicUrl: 'http://127.0.0.1:3003',
+    // Sur un accès en HTTP, comme le tailnet, NUXT_SESSION_COOKIE_SECURE=false :
+    // sinon le navigateur jette le cookie et la connexion ne tient pas
+    session: { cookie: { secure: true } },
   },
 })
