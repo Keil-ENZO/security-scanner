@@ -27,9 +27,9 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 async function runScan(scanId: number) {
   const db = useDb()
   const target = db.prepare(`
-    SELECT t.id, t.name, t.repo, t.url, t.auth_header
+    SELECT t.id, t.name, t.repo, t.url, t.auth_header, s.origin
     FROM scans s JOIN targets t ON t.id = s.target_id WHERE s.id = ?
-  `).get(scanId) as unknown as TargetRow | undefined
+  `).get(scanId) as unknown as (TargetRow & { origin: string }) | undefined
   if (!target) return
 
   db.prepare(`UPDATE scans SET status = 'running', started_at = datetime('now') WHERE id = ?`).run(scanId)
@@ -90,6 +90,19 @@ async function runScan(scanId: number) {
     db.prepare(`
       UPDATE scans SET status = 'done', summary = ?, error = ?, finished_at = datetime('now') WHERE id = ?
     `).run(summary, errors.join('\n') || null, scanId)
+
+    // Le jeudi, c'est Hermes qui envoie le récapitulatif de tout le lot
+    if (target.origin === 'manuel') {
+      const lines = [
+        `🛡️ ${target.name} : ${formatCounts(countBySeverity(findings))}`,
+        '',
+        summary ?? 'Rapport indisponible.',
+        ...errors.map(e => `⚠️ ${e.split('\n')[0]!.slice(0, 200)}`),
+        '',
+        `${useRuntimeConfig().publicUrl}/scans/${scanId}`,
+      ]
+      await notify(lines.join('\n')).catch(() => {})
+    }
   }
   catch (err) {
     if (db.isTransaction) db.exec('ROLLBACK')

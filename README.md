@@ -58,7 +58,7 @@ Image avec les trois scanners, checksums vérifiés. Écoute sur `127.0.0.1:3003
 ```yaml
 services:
   security-scanner:
-    build: https://github.com/Keil-ENZO/security-scanner.git#v0.1.2
+    build: https://github.com/Keil-ENZO/security-scanner.git#v0.1.3
     restart: unless-stopped
     network_mode: host
     env_file: .env

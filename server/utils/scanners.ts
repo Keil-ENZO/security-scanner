@@ -149,10 +149,12 @@ export async function nuclei(url: string, authHeader: string | null, workDir: st
       continue
     }
     const c = r.info?.classification ?? {}
+    // Un même template sort plusieurs lignes : le matcher ou la valeur extraite les distingue
+    const detail = r['matcher-name'] ?? joinList(r['extracted-results'])
     findings.push({
       tool: 'nuclei',
       severity: severity(r.info?.severity),
-      title: r.info?.name ?? r['template-id'],
+      title: `${r.info?.name ?? r['template-id']}${detail ? ` : ${String(detail).slice(0, 100)}` : ''}`,
       ruleId: r['template-id'],
       cve: joinList(c['cve-id']),
       cwe: joinList(c['cwe-id']),

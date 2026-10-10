@@ -27,5 +27,10 @@ export async function cloneRepo(repo: string, dest: string) {
     ['-c', 'protocol.file.allow=never', 'clone', '--depth', '1', '--quiet', '--', `https://github.com/${repo}.git`, dest],
     { env, timeoutMs: 5 * 60_000 },
   )
-  if (result.code !== 0) throw new Error(`git clone : ${result.stderr.trim().slice(-500)}`)
+  if (result.code !== 0) {
+    if (!githubToken && /could not read Username/.test(result.stderr)) {
+      throw new Error('dépôt privé ou introuvable. Pour un dépôt privé, renseigner NUXT_GITHUB_TOKEN')
+    }
+    throw new Error(`git clone : ${result.stderr.trim().slice(-500)}`)
+  }
 }

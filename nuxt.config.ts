@@ -17,6 +17,9 @@ export default defineNuxtConfig({
     githubToken: '',
     ollamaUrl: 'http://127.0.0.1:11434',
     ollamaModel: 'qwen3.8:27b',
+    // Bot de Hermes, pour le rapport d'un scan manuel
+    telegramBotToken: '',
+    telegramChatId: '',
     // Jeton du cron Hermes, qui déclenche l'audit du jeudi
     hermesToken: '',
     // Adresse de l'interface, pour les liens du rapport
