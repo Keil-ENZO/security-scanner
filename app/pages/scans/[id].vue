@@ -11,6 +11,21 @@ const filtered = computed(() => (data.value?.findings ?? []).filter(f =>
   (!tool.value || f.tool === tool.value) && (!severity.value || f.severity === severity.value),
 ))
 
+const counts = computed(() => {
+  const c: Record<string, number> = Object.fromEntries(SEVERITY_ORDER.map(s => [s, 0]))
+  for (const f of data.value?.findings ?? []) c[f.severity] = (c[f.severity] ?? 0) + 1
+  return c
+})
+const worst = computed(() => SEVERITY_ORDER.find(s => counts.value[s] && s !== 'info') ?? 'ok')
+
+// Le rapport : « Verdict : … » puis des tirets
+const report = computed(() => {
+  const lines = (data.value?.scan.summary ?? '').split('\n').map(l => l.trim()).filter(Boolean)
+  const verdict = lines[0]?.replace(/^Verdict\s*:\s*/i, '') ?? ''
+  const items = lines.slice(1).map(l => l.replace(/^[-•]\s*/, ''))
+  return { verdict, items }
+})
+
 const running = computed(() => ['queued', 'running'].includes(data.value?.scan.status ?? ''))
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -19,51 +34,79 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 </script>
 
-<!-- Garde-fou 4 : tout est rendu en texte, jamais de v-html. Les findings viennent de sources externes -->
+<!-- Garde-fou : tout est rendu en texte, jamais de v-html. Les findings viennent de sources externes -->
 <template>
   <template v-if="data">
-    <section class="card">
-      <h1>{{ data.scan.target }} <span :class="['status', data.scan.status]">{{ data.scan.status }}</span></h1>
-      <p class="muted">
-        Scan #{{ data.scan.id }} · {{ data.scan.origin }} · {{ data.scan.created_at }} UTC
-        <template v-if="data.scan.repo"> · {{ data.scan.repo }}</template>
-        <template v-if="data.scan.url"> · {{ data.scan.url }}</template>
-      </p>
-      <p v-if="running" class="muted">Scan en cours. La page se met à jour seule. Comptez quelques minutes, jusqu'à une demi-heure pour un site.</p>
-      <pre v-if="data.scan.error" class="error">{{ data.scan.error }}</pre>
-    </section>
+    <NuxtLink to="/" class="back">← Retour</NuxtLink>
 
-    <section v-if="data.scan.summary" class="card">
-      <h2>Rapport</h2>
-      <p class="summary">{{ data.scan.summary }}</p>
-    </section>
-
-    <section v-if="data.findings.length" class="card">
-      <h2>Findings ({{ filtered.length }} / {{ data.findings.length }})</h2>
-      <div class="filters">
-        <select v-model="tool">
-          <option value="">Tous les outils</option>
-          <option>trivy</option><option>semgrep</option><option>nuclei</option>
-        </select>
-        <select v-model="severity">
-          <option value="">Toutes les sévérités</option>
-          <option>critical</option><option>high</option><option>medium</option><option>low</option><option>info</option>
-        </select>
+    <section class="scan-head">
+      <div>
+        <p class="label">// Scan #{{ String(data.scan.id).padStart(4, '0') }} · {{ data.scan.origin }}</p>
+        <h1>{{ data.scan.target }} <StatusPill :status="data.scan.status" /></h1>
+        <div class="meta mono">
+          <span v-if="data.scan.repo">⎇ {{ data.scan.repo }}</span>
+          <span v-if="data.scan.url">⌁ {{ data.scan.url }}</span>
+          <span>◷ {{ formatDate(data.scan.created_at) }}</span>
+        </div>
       </div>
-      <details v-for="f in filtered" :key="f.id" class="finding">
+    </section>
+
+    <section class="kpis sev-kpis">
+      <button
+        v-for="s in SEVERITY_ORDER" :key="s"
+        :class="['kpi', 'sev-kpi', s, { off: !counts[s], selected: severity === s }]"
+        @click="severity = severity === s ? '' : s"
+      >
+        <span class="label">{{ s }}</span>
+        <strong>{{ counts[s] }}</strong>
+      </button>
+    </section>
+
+    <section v-if="running" class="panel scanning">
+      <span class="spinner" /> Analyse en cours. Quelques minutes, jusqu'à une demi-heure pour un site.
+    </section>
+
+    <section v-if="data.scan.error" class="panel alert">
+      <p class="label">// Incidents</p>
+      <pre>{{ data.scan.error }}</pre>
+    </section>
+
+    <section v-if="data.scan.summary" :class="['panel', 'report', worst]">
+      <p class="label">// Rapport · LLM local</p>
+      <p class="verdict">{{ report.verdict }}</p>
+      <ol v-if="report.items.length">
+        <li v-for="(item, i) in report.items" :key="i">{{ item }}</li>
+      </ol>
+    </section>
+
+    <section v-if="data.findings.length" class="panel">
+      <div class="panel-head">
+        <p class="label">// Findings · {{ filtered.length }} / {{ data.findings.length }}</p>
+        <div class="filters">
+          <select v-model="tool">
+            <option value="">Tous les outils</option>
+            <option>trivy</option><option>semgrep</option><option>nuclei</option>
+          </select>
+          <select v-model="severity">
+            <option value="">Toutes sévérités</option>
+            <option v-for="s in SEVERITY_ORDER" :key="s">{{ s }}</option>
+          </select>
+        </div>
+      </div>
+      <details v-for="f in filtered" :key="f.id" :class="['finding', f.severity]">
         <summary>
-          <span :class="['sev', f.severity]">{{ f.severity }}</span>
-          <span class="tool">{{ f.tool }}</span>
-          {{ f.title }}
-          <span class="muted">{{ f.location }}</span>
+          <SevBadge :severity="f.severity" />
+          <span class="tool mono">{{ f.tool }}</span>
+          <span class="title">{{ f.title }}</span>
+          <code class="loc mono">{{ f.location }}</code>
         </summary>
         <dl>
-          <template v-if="f.rule_id"><dt>Règle</dt><dd>{{ f.rule_id }}</dd></template>
-          <template v-if="f.cve"><dt>CVE</dt><dd>{{ f.cve }}</dd></template>
-          <template v-if="f.cwe"><dt>CWE</dt><dd>{{ f.cwe }}</dd></template>
-          <template v-if="f.cvss"><dt>CVSS</dt><dd>{{ f.cvss }}</dd></template>
+          <template v-if="f.rule_id"><dt>Règle</dt><dd class="mono">{{ f.rule_id }}</dd></template>
+          <template v-if="f.cve"><dt>CVE</dt><dd class="mono">{{ f.cve }}</dd></template>
+          <template v-if="f.cwe"><dt>CWE</dt><dd class="mono">{{ f.cwe }}</dd></template>
+          <template v-if="f.cvss"><dt>CVSS</dt><dd class="mono">{{ f.cvss }}</dd></template>
           <template v-if="f.description"><dt>Détail</dt><dd>{{ f.description }}</dd></template>
-          <template v-if="f.remediation"><dt>Correction</dt><dd>{{ f.remediation }}</dd></template>
+          <template v-if="f.remediation"><dt>Correction</dt><dd class="fix">{{ f.remediation }}</dd></template>
         </dl>
       </details>
     </section>

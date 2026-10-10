@@ -10,12 +10,19 @@ async function logout() {
 
 <template>
   <div class="shell">
-    <header>
-      <NuxtLink to="/" class="brand">🛡️ Security Scanner</NuxtLink>
-      <button v-if="loggedIn" class="ghost" @click="logout">Déconnexion</button>
+    <header class="topbar">
+      <NuxtLink to="/" class="brand">
+        <span class="brand-mark">◆</span>
+        <span>SECURITY<b>SCANNER</b></span>
+      </NuxtLink>
+      <div class="topbar-right">
+        <span class="node"><i class="dot" />homelab-01</span>
+        <button v-if="loggedIn" class="ghost" @click="logout">Déconnexion</button>
+      </div>
     </header>
     <main>
       <NuxtPage />
     </main>
+    <footer>Trivy · Semgrep · Nuclei · rapport par LLM local. Usage limité aux cibles autorisées.</footer>
   </div>
 </template>
