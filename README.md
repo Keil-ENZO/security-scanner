@@ -40,9 +40,15 @@ node scripts/hash-password.mjs
 pnpm dev
 ```
 
-## Corriger
+## Corriger, relire, merger
 
-Le bouton « Corriger » d'un scan ouvre une pull request. Rien n'est poussé sur la branche par défaut.
+1. **Corriger** pousse une branche `security/scan-N-fix-M`, puis la scanne. Rien sur la branche par défaut.
+2. **Branches** : celles du dépôt, lues sur GitHub. Chacune se scanne. Une branche ne se teste que par son code : le site en ligne, c'est la prod.
+3. **Review** : scan de la branche comparé à celui de la branche par défaut, preview Vercel, commits, diff fichier par fichier.
+4. **Valider** ouvre la pull request.
+5. **Merger** en squash. Bloqué tant que le dernier commit n'est pas scanné, que la preview n'est pas verte, ou si la branche introduit un finding. Ces conditions sont revérifiées côté serveur, et GitHub refuse le merge si un commit arrive entre-temps. La branche est ensuite supprimée et la branche par défaut rescannée.
+
+Détail des corrections :
 
 - **Dépendances npm.** Une dépendance directe monte dans `package.json`. Une transitive reçoit un `override` limité à la version vulnérable, `"proxy-addr@2.0.7": "2.0.8"`. Une version majeure sur une transitive n'est jamais forcée.
 - **Lockfile** régénéré par `npm install --package-lock-only --ignore-scripts` : aucun code du dépôt n'est exécuté.
@@ -50,7 +56,7 @@ Le bouton « Corriger » d'un scan ouvre une pull request. Rien n'est poussé su
 - **Headers HTTP** ajoutés dans `vercel.json`, seulement ceux qui ne cassent rien. CSP et `Cross-Origin-*` restent manuels.
 - **Le LLM local** ne touche pas au code. Il écrit dans la PR ce qu'il faut tester dans la preview.
 
-Le jeton GitHub doit alors avoir Contents et Pull requests en écriture. `git` tourne sans config globale ni système : aucun autre identifiant que ce jeton ne peut servir.
+Le jeton GitHub doit avoir Contents et Pull requests en écriture, et Commit statuses en lecture pour la preview Vercel. `git` tourne sans config globale ni système : aucun autre identifiant que ce jeton ne peut servir.
 
 ## Déclenchement par Hermes
 
@@ -70,7 +76,7 @@ Image avec les trois scanners, checksums vérifiés. Écoute sur `127.0.0.1:3003
 ```yaml
 services:
   security-scanner:
-    build: https://github.com/Keil-ENZO/security-scanner.git#v0.2.0
+    build: https://github.com/Keil-ENZO/security-scanner.git#v0.3.0
     restart: unless-stopped
     network_mode: host
     env_file: .env

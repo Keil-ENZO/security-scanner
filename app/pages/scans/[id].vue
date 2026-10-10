@@ -1,7 +1,7 @@
 <script setup lang="ts">
 interface Finding { id: number, tool: string, severity: string, title: string, rule_id: string | null, cve: string | null, cwe: string | null, cvss: number | null, location: string | null, description: string | null, remediation: string | null }
-interface Fix { id: number, status: string, pr_url: string | null, summary: string | null, error: string | null, created_at: string }
-interface Scan { id: number, target: string, repo: string | null, url: string | null, status: string, origin: string, error: string | null, summary: string | null, created_at: string, finished_at: string | null }
+interface Fix { id: number, status: string, branch: string | null, pr_url: string | null, summary: string | null, error: string | null, created_at: string }
+interface Scan { id: number, target_id: number, ref: string | null, target: string, repo: string | null, url: string | null, status: string, origin: string, error: string | null, summary: string | null, created_at: string, finished_at: string | null }
 
 const route = useRoute()
 const { data, refresh } = await useFetch<{ scan: Scan, findings: Finding[], fixes: Fix[] }>(`/api/scans/${route.params.id}`)
@@ -29,7 +29,7 @@ const report = computed(() => {
 
 const fixing = computed(() => data.value?.fixes.some(f => f.status === 'queued' || f.status === 'running') ?? false)
 const running = computed(() => ['queued', 'running'].includes(data.value?.scan.status ?? '') || fixing.value)
-const canFix = computed(() => data.value?.scan.status === 'done' && !!data.value.scan.repo && !fixing.value)
+const canFix = computed(() => data.value?.scan.status === 'done' && !!data.value.scan.repo && !data.value.scan.ref && !fixing.value)
 const fixError = ref('')
 
 async function fix() {
@@ -57,9 +57,10 @@ onUnmounted(() => clearInterval(timer))
     <section class="scan-head">
       <div>
         <p class="label">// Scan #{{ String(data.scan.id).padStart(4, '0') }} · {{ data.scan.origin }}</p>
+        <NuxtLink v-if="data.scan.repo" :to="`/targets/${data.scan.target_id}`" class="back inline">⎇ Branches de {{ data.scan.target }}</NuxtLink>
         <h1>{{ data.scan.target }} <StatusPill :status="data.scan.status" /></h1>
         <div class="meta mono">
-          <span v-if="data.scan.repo">⎇ {{ data.scan.repo }}</span>
+          <span v-if="data.scan.repo">⎇ {{ data.scan.repo }}<template v-if="data.scan.ref"> @ {{ data.scan.ref }}</template></span>
           <span v-if="data.scan.url">⌁ {{ data.scan.url }}</span>
           <span>◷ {{ formatDate(data.scan.created_at) }}</span>
         </div>
@@ -89,13 +90,14 @@ onUnmounted(() => clearInterval(timer))
         <StatusPill :status="f.status" />
       </div>
       <p v-if="f.status === 'queued' || f.status === 'running'" class="scanning">
-        <span class="spinner" /> Branche, mises à jour, nouvelle passe de Trivy, puis pull request.
+        <span class="spinner" /> Branche, mises à jour, nouvelle passe de Trivy, puis scan de la branche.
       </p>
       <ul v-if="f.summary" class="fix-list">
         <li v-for="(line, i) in f.summary.split('\n')" :key="i" :class="{ ok: line.startsWith('✓'), ko: line.startsWith('✕') }">{{ line }}</li>
       </ul>
       <pre v-if="f.error" class="error">{{ f.error }}</pre>
-      <a v-if="f.pr_url" :href="f.pr_url" target="_blank" rel="noopener noreferrer" class="pr-link">↗ Voir la pull request</a>
+      <NuxtLink v-if="f.branch" :to="`/targets/${data.scan.target_id}/review?ref=${encodeURIComponent(f.branch)}`" class="pr-link">→ Review de {{ f.branch }}</NuxtLink>
+      <a v-else-if="f.pr_url" :href="f.pr_url" target="_blank" rel="noopener noreferrer" class="pr-link">↗ Voir la pull request</a>
     </section>
 
     <section v-if="data.scan.error" class="panel alert">

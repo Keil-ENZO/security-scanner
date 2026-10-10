@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-// Correction automatique d'un scan : une branche, des commits, une pull request.
+// Correction automatique d'un scan : une branche, des commits, puis un scan de la branche.
+// La pull request n'est ouverte qu'à la validation, depuis l'écran de review.
 // Rien n'est poussé sur la branche par défaut, rien du dépôt n'est exécuté.
 
 interface Vuln { name: string, installed: string, fixed: string[], id: string, severity: string }
@@ -135,9 +136,9 @@ export function enqueueFix(scanId: number) {
 async function runFix(fixId: number) {
   const db = useDb()
   const row = db.prepare(`
-    SELECT f.scan_id, t.name, t.repo FROM fixes f
+    SELECT f.scan_id, t.id AS target_id, t.name, t.repo FROM fixes f
     JOIN scans s ON s.id = f.scan_id JOIN targets t ON t.id = s.target_id WHERE f.id = ?
-  `).get(fixId) as { scan_id: number, name: string, repo: string } | undefined
+  `).get(fixId) as { scan_id: number, target_id: number, name: string, repo: string } | undefined
   if (!row) return
   db.prepare(`UPDATE fixes SET status = 'running' WHERE id = ?`).run(fixId)
   const work = join(useRuntimeConfig().dataDir, 'work', `fix-${fixId}`)
@@ -204,21 +205,13 @@ async function runFix(fixId: number) {
 
     await git(src, ['push', '-q', 'origin', `HEAD:refs/heads/${branch}`])
     const body = await prBody(row.name, row.scan_id, done, manual, bumps)
-    const pr = await $fetch<{ html_url: string }>(`https://api.github.com/repos/${repo}/pulls`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${useRuntimeConfig().githubToken}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'security-scanner',
-      },
-      body: { title: `Sécurité : corrections du scan #${row.scan_id}`, head: branch, base, body },
-    })
-
     const summary = [...done.map(d => `✓ ${d}`), ...manual.map(m => `✕ ${m}`)].join('\n')
-    db.prepare(`UPDATE fixes SET status = 'done', pr_url = ?, summary = ?, finished_at = datetime('now') WHERE id = ?`)
-      .run(pr.html_url, summary, fixId)
-    await notify(`🔧 ${row.name} : pull request ouverte\n\n${summary}\n\n${pr.html_url}`).catch(() => {})
+    db.prepare(`UPDATE fixes SET status = 'done', branch = ?, pr_body = ?, summary = ?, finished_at = datetime('now') WHERE id = ?`)
+      .run(branch, body, summary, fixId)
+    // La branche est scannée tout de suite : la review compare ce scan à celui de la branche par défaut
+    enqueueScan(row.target_id, 'correction', null, branch)
+    const review = `${useRuntimeConfig().publicUrl}/targets/${row.target_id}/review?ref=${encodeURIComponent(branch)}`
+    await notify(`🔧 ${row.name} : branche ${branch} poussée, scan en cours\n\n${summary}\n\nReview : ${review}`).catch(() => {})
   }
   catch (err) {
     // Ce qui avait été préparé reste visible, même si la PR n'a pas pu être ouverte
@@ -241,7 +234,7 @@ async function prBody(name: string, scanId: number, done: string[], manual: stri
   if (manual.length) lines.push('', '### Reste à faire à la main', ...manual.map(m => `- ${m}`))
   const advice = await reviewAdvice(done, bumps).catch(() => null)
   if (advice) lines.push('', '### À vérifier avant de merger', advice)
-  lines.push('', 'Chaque correction a son commit. Trivy a été relancé sur cette branche : seul ce qu’il ne voit plus est marqué corrigé.')
+  lines.push('', 'Chaque correction a son commit. Trivy a été relancé sur cette branche : seul ce qu’il ne voit plus est marqué corrigé.', '', 'Validée dans le Security Scanner après un scan de la branche.')
   return lines.join('\n')
 }
 

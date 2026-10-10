@@ -1,6 +1,6 @@
 <script setup lang="ts">
 interface Target { id: number, name: string, repo: string | null, url: string | null, weekly: number, has_auth: number, last_scan_id: number | null }
-interface ScanRow { id: number, target: string, origin: string, status: string, created_at: string, critical: number, high: number, medium: number, low: number, total: number }
+interface ScanRow { id: number, target: string, ref: string | null, origin: string, status: string, created_at: string, critical: number, high: number, medium: number, low: number, total: number }
 
 const { data: targets, refresh: refreshTargets } = await useFetch<Target[]>('/api/targets')
 const { data: scans, refresh: refreshScans } = await useFetch<ScanRow[]>('/api/scans')
@@ -93,7 +93,7 @@ onUnmounted(() => clearInterval(timer))
     <div v-else class="rows">
       <div v-for="t in targets" :key="t.id" class="row target-row">
         <div>
-          <strong>{{ t.name }}</strong>
+          <NuxtLink :to="`/targets/${t.id}`" class="target-link"><strong>{{ t.name }}</strong></NuxtLink>
           <div class="tags">
             <span v-if="t.weekly" class="tag">hebdo</span>
             <span v-if="t.has_auth" class="tag">authentifié</span>
@@ -102,6 +102,7 @@ onUnmounted(() => clearInterval(timer))
         <code class="mono muted">{{ t.repo ?? '—' }}</code>
         <code class="mono muted">{{ t.url ?? '—' }}</code>
         <div class="actions">
+          <NuxtLink v-if="t.repo" :to="`/targets/${t.id}`" class="btn ghost-btn">⎇ Branches</NuxtLink>
           <button @click="scan(t.id)">▶ Scanner</button>
           <button class="ghost danger" title="Supprimer" @click="remove(t)">✕</button>
         </div>
@@ -115,7 +116,7 @@ onUnmounted(() => clearInterval(timer))
     <div v-else class="rows">
       <NuxtLink v-for="s in scans" :key="s.id" :to="`/scans/${s.id}`" class="row scan-row">
         <code class="mono muted">#{{ String(s.id).padStart(4, '0') }}</code>
-        <strong>{{ s.target }}</strong>
+        <span><strong>{{ s.target }}</strong> <code v-if="s.ref" class="mono muted">⎇ {{ s.ref }}</code></span>
         <StatusPill :status="s.status" />
         <div class="counts">
           <span v-if="s.critical" class="count critical">{{ s.critical }} C</span>

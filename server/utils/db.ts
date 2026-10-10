@@ -62,8 +62,17 @@ export function useDb() {
       finished_at TEXT
     );
   `)
-  const columns = db.prepare('PRAGMA table_info(scans)').all() as { name: string }[]
-  if (!columns.some(c => c.name === 'batch')) db.exec('ALTER TABLE scans ADD COLUMN batch TEXT')
+  // Migrations : une colonne ajoutée par version
+  const addColumn = (table: string, column: string, type: string) => {
+    const columns = db!.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+    if (!columns.some(c => c.name === column)) db!.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
+  }
+  addColumn('scans', 'batch', 'TEXT')
+  // ref : branche scannée, NULL pour la branche par défaut. sha : commit réellement analysé
+  addColumn('scans', 'ref', 'TEXT')
+  addColumn('scans', 'sha', 'TEXT')
+  addColumn('fixes', 'branch', 'TEXT')
+  addColumn('fixes', 'pr_body', 'TEXT')
   // Un redémarrage coupe les scans en cours : la file vit en mémoire
   db.prepare(`
     UPDATE scans SET status = 'failed', error = 'Interrompu par un redémarrage', finished_at = datetime('now')

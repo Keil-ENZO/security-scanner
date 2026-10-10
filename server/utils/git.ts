@@ -32,12 +32,13 @@ export async function git(cwd: string, args: string[]) {
   return result.stdout.trim()
 }
 
-export async function cloneRepo(repo: string, dest: string) {
+export async function cloneRepo(repo: string, dest: string, ref?: string | null) {
   const { githubToken } = useRuntimeConfig()
   const env = gitEnv()
+  const branch = ref ? ['--branch', validRef(ref)] : []
   const result = await run(
     'git',
-    ['-c', 'protocol.file.allow=never', 'clone', '--depth', '1', '--quiet', '--', `https://github.com/${repo}.git`, dest],
+    ['-c', 'protocol.file.allow=never', 'clone', '--depth', '1', '--quiet', ...branch, '--', `https://github.com/${repo}.git`, dest],
     { env, timeoutMs: 5 * 60_000 },
   )
   if (result.code !== 0) {

@@ -18,10 +18,10 @@ export function schedule<T>(job: () => Promise<T>) {
   return done
 }
 
-export function enqueueScan(targetId: number, origin: 'manuel' | 'hebdo', batch: string | null = null) {
+export function enqueueScan(targetId: number, origin: 'manuel' | 'hebdo' | 'correction', batch: string | null = null, ref: string | null = null) {
   const { lastInsertRowid } = useDb()
-    .prepare('INSERT INTO scans (target_id, origin, batch) VALUES (?, ?, ?)')
-    .run(targetId, origin, batch)
+    .prepare('INSERT INTO scans (target_id, origin, batch, ref) VALUES (?, ?, ?, ?)')
+    .run(targetId, origin, batch, ref)
   const scanId = Number(lastInsertRowid)
   const done = schedule(() => runScan(scanId))
   return { scanId, done }
@@ -32,9 +32,9 @@ export const message = (err: unknown) => (err instanceof Error ? err.message : S
 async function runScan(scanId: number) {
   const db = useDb()
   const target = db.prepare(`
-    SELECT t.id, t.name, t.repo, t.url, t.auth_header, s.origin
+    SELECT t.id, t.name, t.repo, t.url, t.auth_header, s.origin, s.ref
     FROM scans s JOIN targets t ON t.id = s.target_id WHERE s.id = ?
-  `).get(scanId) as unknown as (TargetRow & { origin: string }) | undefined
+  `).get(scanId) as unknown as (TargetRow & { origin: string, ref: string | null }) | undefined
   if (!target) return
 
   db.prepare(`UPDATE scans SET status = 'running', started_at = datetime('now') WHERE id = ?`).run(scanId)
@@ -59,7 +59,8 @@ async function runScan(scanId: number) {
       const repo = parseRepo(`https://github.com/${target.repo}`)
       const src = join(work, 'src')
       await step('git', async () => {
-        await cloneRepo(repo, src)
+        await cloneRepo(repo, src, target.ref)
+        db.prepare('UPDATE scans SET sha = ? WHERE id = ?').run(await git(src, ['rev-parse', 'HEAD']), scanId)
         return []
       })
       if (!errors.length) {
@@ -67,7 +68,8 @@ async function runScan(scanId: number) {
         await step('semgrep', () => semgrep(src))
       }
     }
-    if (target.url) {
+    // Le site en ligne, c'est la prod : une branche ne se teste que par son code
+    if (target.url && !target.ref) {
       const url = parseSite(target.url)
       const auth = target.auth_header ? decrypt(target.auth_header) : null
       await step('nuclei', () => nuclei(url, auth, work))
