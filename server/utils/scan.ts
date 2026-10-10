@@ -12,10 +12,10 @@ interface TargetRow {
 // Un seul scan à la fois : la file vit en mémoire
 let queue: Promise<unknown> = Promise.resolve()
 
-export function enqueueScan(targetId: number, origin: 'manuel' | 'hebdo') {
+export function enqueueScan(targetId: number, origin: 'manuel' | 'hebdo', batch: string | null = null) {
   const { lastInsertRowid } = useDb()
-    .prepare('INSERT INTO scans (target_id, origin) VALUES (?, ?)')
-    .run(targetId, origin)
+    .prepare('INSERT INTO scans (target_id, origin, batch) VALUES (?, ?, ?)')
+    .run(targetId, origin, batch)
   const scanId = Number(lastInsertRowid)
   const done = queue.then(() => runScan(scanId))
   queue = done.catch(() => {})
@@ -90,10 +90,6 @@ async function runScan(scanId: number) {
     db.prepare(`
       UPDATE scans SET status = 'done', summary = ?, error = ?, finished_at = datetime('now') WHERE id = ?
     `).run(summary, errors.join('\n') || null, scanId)
-
-    const head = `🛡️ ${target.name} : ${formatCounts(countBySeverity(findings))}`
-    const tail = errors.length ? `\n\n⚠️ ${errors.join('\n')}` : ''
-    await notify(`${head}\n\n${summary ?? 'Rapport indisponible.'}${tail}`).catch(() => {})
   }
   catch (err) {
     if (db.isTransaction) db.exec('ROLLBACK')

@@ -17,12 +17,9 @@ export default defineNuxtConfig({
     githubToken: '',
     ollamaUrl: 'http://127.0.0.1:11434',
     ollamaModel: 'qwen3.8:27b',
-    telegramBotToken: '',
-    telegramChatId: '',
-  },
-  nitro: {
-    experimental: { tasks: true },
-    // Audit complet chaque jeudi à 20 h, heure du serveur
-    scheduledTasks: { '0 20 * * 4': ['scan:weekly'] },
+    // Jeton du cron Hermes, qui déclenche l'audit du jeudi
+    hermesToken: '',
+    // Adresse de l'interface, pour les liens du rapport
+    publicUrl: 'http://127.0.0.1:3003',
   },
 })
