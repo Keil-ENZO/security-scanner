@@ -33,7 +33,8 @@ RUN set -eux; \
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
 ENV UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_INSTALL_DIR=/opt/uv/python
-RUN uv tool install "semgrep==${SEMGREP_VERSION}" && semgrep --version
+# Python 3.12 : ruamel-yaml-clib y a un binaire prêt, pas besoin de compilateur
+RUN uv tool install --python 3.12 "semgrep==${SEMGREP_VERSION}" && semgrep --version
 
 WORKDIR /app
 COPY --from=build /app/.output ./.output
