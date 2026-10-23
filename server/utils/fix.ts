@@ -124,6 +124,29 @@ function applyHeaders(dir: string, missing: string[]) {
   return added
 }
 
+const npm = (dir: string, args: string[]) =>
+  run('npm', [...args, '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: dir, timeoutMs: 10 * 60_000 })
+
+// Le lockfile doit s'installer comme sur Vercel. Un override isolé casse un peer exact :
+// @tiptap/core 3.30 exige @tiptap/pm 3.30. Les bumps en conflit repartent en manuel
+async function lockBumps(dir: string, bumps: Bump[], manual: string[]) {
+  let kept = bumps
+  for (let attempt = 0; attempt < 4 && kept.length; attempt++) {
+    await git(dir, ['checkout', '-q', '--', 'package.json', 'package-lock.json'])
+    applyBumps(dir, kept)
+    let check = await npm(dir, ['install', '--package-lock-only'])
+    if (check.code === 0) check = await npm(dir, ['ci', '--dry-run'])
+    if (check.code === 0) return kept
+    const culprits = kept.filter(b => check.stderr.includes(`${b.name}@`))
+    if (!/ERESOLVE/.test(check.stderr) || !culprits.length) throw new Error(`npm : ${check.stderr.trim().slice(-400)}`)
+    for (const b of culprits) manual.push(`${b.name} ${b.from} → ${b.to} : conflit de peer dependency, monter toute la famille du paquet ensemble`)
+    kept = kept.filter(b => !culprits.includes(b))
+  }
+  await git(dir, ['checkout', '-q', '--', 'package.json', 'package-lock.json'])
+  if (kept.length) throw new Error('npm : lockfile toujours en conflit après 4 essais')
+  return kept
+}
+
 const COMMIT_IDENTITY = ['-c', 'user.name=Security Scanner', '-c', 'user.email=security-scanner@homelab-01']
 
 export function enqueueFix(scanId: number) {
@@ -164,10 +187,8 @@ async function runFix(fixId: number) {
       bumps = plan.bumps
       for (const v of plan.unfixable) manual.push(`${v.name} ${v.installed} : ${v.id}, pas encore de version corrigée`)
       for (const b of plan.majors) manual.push(`${b.name} ${b.from} → ${b.to} : version majeure sur une dépendance transitive, mettre à jour le paquet parent`)
+      if (bumps.length) bumps = await lockBumps(src, bumps, manual)
       if (bumps.length) {
-        applyBumps(src, bumps)
-        const lock = await run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: src, timeoutMs: 10 * 60_000 })
-        if (lock.code !== 0) throw new Error(`npm : ${lock.stderr.trim().slice(-400)}`)
         // On ne croit que ce que Trivy constate après coup
         const after = new Set((await trivyVulns(src)).map(v => `${v.name}@${v.id}`))
         fixedIds = new Set(before.filter(v => !after.has(`${v.name}@${v.id}`)).map(v => v.id))

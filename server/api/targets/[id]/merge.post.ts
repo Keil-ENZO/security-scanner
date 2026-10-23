@@ -20,8 +20,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, message: `Checks ${reason}${checks.warning ? ` : ${checks.warning}` : ''}` })
   }
 
+  // La preview doit avoir été construite sur la base actuelle : sinon la prod n'est pas ce qui a été testé
+  const base = await defaultBranch(t.repo)
+  const compare = await githubApi<{ behind_by: number }>(`/repos/${t.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(ref)}`)
+  if (compare.behind_by) throw createError({ statusCode: 409, message: `En retard de ${compare.behind_by} commit(s) sur ${base} : mettre la branche à jour` })
+
   // sha : GitHub refuse le merge si un commit est arrivé entre-temps
-  await githubApi(`/repos/${t.repo}/pulls/${pr.number}/merge`, {
+  const merged = await githubApi<{ sha: string }>(`/repos/${t.repo}/pulls/${pr.number}/merge`, {
     method: 'PUT',
     body: { merge_method: 'squash', sha: pr.head.sha },
   })
@@ -29,5 +34,7 @@ export default defineEventHandler(async (event) => {
   await githubApi(`/repos/${t.repo}/git/refs/heads/${ref}`, { method: 'DELETE' }).catch(() => {})
   // La prod a changé : nouveau scan de la branche par défaut
   const { scanId } = enqueueScan(t.id, 'manuel')
+  // Le merge n'est fini que quand la prod est en ligne
+  watchDeploy(t, merged.sha, ref)
   return { merged: true, scanId }
 })

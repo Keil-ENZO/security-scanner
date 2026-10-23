@@ -6,13 +6,19 @@ interface Branch { name: string, sha: string, isDefault: boolean, protected: boo
 const route = useRoute()
 const id = route.params.id as string
 const { data: target } = await useFetch<Target>(`/api/targets/${id}`)
+interface Deploy { base: string, sha: string, message: string, date: string, state: string, url: string | null, description: string | null, logs: string | null }
+const { data: deploy, refresh: refreshDeploy } = await useFetch<Deploy>(`/api/targets/${id}/deploy`, { lazy: true })
+const deployLabel: Record<string, string> = { success: 'En ligne', failure: 'Échec', pending: 'En cours', none: 'Aucun déploiement', unavailable: 'Illisible' }
 const { data, error, refresh, status } = await useFetch<{ base: string, branches: Branch[] }>(`/api/targets/${id}/branches`, { lazy: true })
 
 const errorMessage = computed(() => (error.value?.data as { message?: string } | undefined)?.message ?? 'Erreur GitHub')
 const busy = computed(() => data.value?.branches.some(b => b.lastScan && ['queued', 'running'].includes(b.lastScan.status)))
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
-  timer = setInterval(() => busy.value && refresh(), 5000)
+  timer = setInterval(() => {
+    if (busy.value) refresh()
+    if (deploy.value?.state === 'pending') refreshDeploy()
+  }, 5000)
 })
 onUnmounted(() => clearInterval(timer))
 
@@ -36,6 +42,24 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
         <span v-if="target.url">⌁ {{ target.url }}</span>
       </div>
     </div>
+  </section>
+
+  <section v-if="deploy && target?.repo" :class="['panel', 'deploy', deploy.state]">
+    <div class="panel-head">
+      <p class="label">// Production · {{ deploy.base }}</p>
+      <button class="ghost" @click="refreshDeploy()">↻</button>
+    </div>
+    <div class="deploy-line mono">
+      <span :class="['status', deploy.state === 'success' ? 'done' : deploy.state === 'failure' ? 'failed' : 'running']"><i />{{ deployLabel[deploy.state] ?? deploy.state }}</span>
+      <span class="muted">{{ deploy.sha.slice(0, 7) }}</span>
+      <span>{{ deploy.message }}</span>
+      <a v-if="deploy.url" :href="deploy.url" target="_blank" rel="noopener noreferrer">↗ Vercel</a>
+    </div>
+    <template v-if="deploy.state === 'failure'">
+      <p class="muted">La prod reste sur le dernier déploiement réussi. {{ deploy.description }}</p>
+      <pre v-if="deploy.logs" class="patch build-log">{{ deploy.logs }}</pre>
+      <p v-else class="muted mono">Renseigner NUXT_VERCEL_TOKEN pour voir le log de build ici.</p>
+    </template>
   </section>
 
   <section class="panel">

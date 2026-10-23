@@ -48,6 +48,7 @@ const PERMISSION_HINT: [RegExp, string][] = [
   [/^\/pulls\/\d+\/merge/, 'Contents et Pull requests, écriture'],
   [/^\/pulls/, 'Pull requests, lecture et écriture'],
   [/^\/git\/refs/, 'Contents, écriture'],
+  [/^\/merges/, 'Contents, écriture'],
   [/^\/(compare|branches)/, 'Contents, lecture'],
 ]
 
@@ -112,4 +113,60 @@ export function latestScan(targetId: number, ref: string | null) {
   return useDb().prepare(`
     SELECT id, sha, created_at FROM scans WHERE target_id = ? AND status = 'done' AND ref IS ? ORDER BY id DESC LIMIT 1
   `).get(targetId, ref) as { id: number, sha: string | null, created_at: string } | undefined
+}
+
+// mergeable vaut null tant que GitHub calcule. dirty : conflits. behind : en retard sur la base
+export async function pullMergeState(repo: string, number: number) {
+  const pr = await githubApi<{ mergeable: boolean | null, mergeable_state: string }>(`/repos/${repo}/pulls/${number}`)
+  return { mergeable: pr.mergeable, state: pr.mergeable_state }
+}
+
+// Merge de la base dans la branche, côté GitHub. 409 : conflits, à résoudre autrement
+export async function updateBranch(repo: string, ref: string, base: string) {
+  try {
+    const res = await githubApi<{ sha: string } | undefined>(`/repos/${repo}/merges`, {
+      method: 'POST',
+      body: { base: ref, head: base, commit_message: `Merge ${base} dans ${ref}` },
+    })
+    // 204 : déjà à jour
+    return { conflict: false, sha: res?.sha ?? null }
+  }
+  catch (err: any) {
+    if (/conflict/i.test(err?.message ?? '')) return { conflict: true, sha: null }
+    throw err
+  }
+}
+
+// Déploiement de production : le statut Vercel du dernier commit de la branche par défaut
+export async function productionDeploy(repo: string) {
+  const base = await defaultBranch(repo)
+  const head = await githubApi<{ sha: string, commit: { message: string, author: { date: string } } }>(`/repos/${repo}/commits/${encodeURIComponent(base)}`)
+  const checks = await checksFor(repo, head.sha)
+  const vercel = checks.items.find(i => /vercel/i.test(i.name)) ?? null
+  const logs = vercel?.state === 'failure' ? await vercelLogs(vercel.description, vercel.url).catch(() => null) : null
+  return {
+    base,
+    sha: head.sha,
+    message: head.commit.message.split('\n')[0],
+    date: head.commit.author.date,
+    state: vercel?.state ?? checks.state,
+    url: vercel?.url ?? null,
+    description: vercel?.description ?? null,
+    logs,
+  }
+}
+
+// Fin du log de build Vercel, si NUXT_VERCEL_TOKEN est renseigné. Lecture seule
+export async function vercelLogs(description: string | null, url: string | null) {
+  const token = useRuntimeConfig().vercelToken
+  if (!token) return null
+  // « npx vercel inspect dpl_… » dans la description, sinon le dernier segment de l'URL
+  const fromUrl = url?.match(/\/([A-Za-z0-9]{20,})$/)?.[1]
+  const id = description?.match(/dpl_[A-Za-z0-9]+/)?.[0] ?? (fromUrl ? `dpl_${fromUrl}` : null)
+  if (!id) return null
+  const events = await fetchJson<{ type: string, text?: string }[]>(`https://api.vercel.com/v3/deployments/${id}/events`, {
+    query: { builds: 1, direction: 'backward', limit: 80 },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return events.filter(e => e.text && ['stdout', 'stderr', 'command'].includes(e.type)).map(e => e.text!).reverse().join('\n')
 }

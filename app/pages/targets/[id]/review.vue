@@ -10,6 +10,8 @@ interface Review {
   commits: { sha: string, message: string, author: string, date: string }[]
   files: { filename: string, status: string, additions: number, deletions: number, patch: string | null }[]
   checks: { state: string, preview: string | null, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
+  previewLogs: string | null
+  conflicts: boolean
   pr: { number: number, url: string, draft: boolean } | null
   scans: { base: { id: number } | null, branch: { id: number, sha: string | null } | null, runningId: number | null, upToDate: boolean }
   diff: { resolved: CodeFinding[], introduced: CodeFinding[], remaining: number } | null
@@ -53,6 +55,13 @@ const merge = () => act('merge', async () => {
   const { scanId } = await $fetch<{ scanId: number }>(`/api/targets/${id}/merge`, { method: 'POST', body: { ref: branch.value } })
   await navigateTo(`/scans/${scanId}`)
 })
+// Retard sur la base : merge de la base dans la branche. En conflit, une branche du scanner est recréée
+const update = () => act('update', async () => {
+  const res = await $fetch<{ updated?: boolean, recreated?: boolean, baseScanId?: number }>(`/api/targets/${id}/update`, { method: 'POST', body: { ref: branch.value } })
+  if (res.recreated) return navigateTo(`/scans/${res.baseScanId}`)
+  await refresh()
+})
+const recreate = computed(() => !!data.value?.conflicts && branch.value.startsWith('security/'))
 const drop = () => act('drop', async () => {
   if (!confirm(`Supprimer la branche ${branch.value} ?`)) return
   await $fetch(`/api/targets/${id}/branch`, { method: 'DELETE', query: { ref: branch.value } })
@@ -65,6 +74,8 @@ const blockers = computed(() => {
   if (!d) return []
   const out: string[] = []
   if (!d.aheadBy) out.push(`Aucun commit d’avance sur ${d.base}`)
+  if (d.conflicts) out.push(`Conflits avec ${d.base}`)
+  else if (d.behindBy) out.push(`En retard sur ${d.base} : la preview ne teste pas ce qui partira en prod`)
   if (!d.pr) out.push('Pas encore de pull request : valider d’abord')
   if (d.pr?.draft) out.push('Pull request en brouillon')
   if (!d.scans.upToDate) out.push('Le dernier commit de la branche n’a pas été scanné')
@@ -130,6 +141,17 @@ onUnmounted(() => clearInterval(timer))
         <button :disabled="!data.canMerge || !!acting" @click="merge">⇢ Merger en squash</button>
       </div>
     </section>
+    <section v-if="data.behindBy || data.conflicts" class="panel sync">
+      <div>
+        <p class="label">// {{ data.conflicts ? 'Conflits' : 'Retard' }} sur {{ data.base }}</p>
+        <p v-if="recreate" class="muted">{{ data.base }} a bougé sur les mêmes fichiers. La correction est refaite depuis {{ data.base }} actuelle, cette branche et sa PR sont fermées.</p>
+        <p v-else-if="data.conflicts" class="muted">À résoudre dans le dépôt, puis rescanner la branche.</p>
+        <p v-else class="muted">{{ data.behindBy }} commit{{ data.behindBy > 1 ? 's' : '' }} de {{ data.base }} manquent. La mise à jour merge {{ data.base }} dans la branche, relance la preview et le scan.</p>
+      </div>
+      <button v-if="recreate || !data.conflicts" :disabled="!!acting" @click="update">
+        {{ recreate ? '⟳ Recréer la correction' : `⟳ Mettre à jour depuis ${data.base}` }}
+      </button>
+    </section>
     <p v-if="actionError" class="error">✕ {{ actionError }}</p>
     <p v-if="data.checks.warning" class="error">✕ {{ data.checks.warning }}</p>
     <ul v-if="blockers.length" class="blockers mono">
@@ -156,11 +178,17 @@ onUnmounted(() => clearInterval(timer))
       <p class="empty">Il faut un scan de {{ data.base }} et un scan de la branche pour comparer.</p>
     </section>
 
+    <section v-if="data.previewLogs" class="panel">
+      <p class="label">// Log de build de la preview</p>
+      <pre class="patch build-log">{{ data.previewLogs }}</pre>
+    </section>
+
     <section v-if="data.checks.items.length" class="panel">
       <p class="label">// Checks</p>
       <div v-for="c in data.checks.items" :key="c.name" class="check-line mono">
         <span :class="['status', c.state === 'success' ? 'done' : c.state === 'failure' ? 'failed' : 'running']"><i />{{ c.state }}</span>
-        <span>{{ c.name }}</span>
+        <a v-if="c.url" :href="c.url" target="_blank" rel="noopener noreferrer">{{ c.name }} ↗</a>
+        <span v-else>{{ c.name }}</span>
         <span class="muted">{{ c.description }}</span>
       </div>
     </section>

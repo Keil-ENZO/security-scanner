@@ -15,6 +15,8 @@ export default defineNuxtConfig({
     allowedOwners: '',
     allowedHosts: '',
     githubToken: '',
+    // Facultatif : log de build Vercel quand un déploiement échoue. Lecture seule
+    vercelToken: '',
     ollamaUrl: 'http://127.0.0.1:11434',
     ollamaModel: 'qwen3.8:27b',
     // Bot de Hermes, pour le rapport d'un scan manuel

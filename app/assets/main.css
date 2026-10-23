@@ -284,3 +284,10 @@ dd.fix { color: var(--accent); }
   .steps { grid-template-columns: 1fr 1fr; }
   .branch-row { grid-template-columns: 1fr; }
 }
+
+/* Branche en retard ou en conflit */
+.sync { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-left: 2px solid var(--medium); }
+.sync p { margin: 4px 0 0; }
+.build-log { max-height: 360px; overflow: auto; white-space: pre-wrap; padding: 8px 12px; }
+.deploy.failure { border-left: 2px solid var(--critical); }
+.deploy-line { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }

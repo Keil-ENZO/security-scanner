@@ -46,12 +46,14 @@ pnpm dev
 2. **Branches** : celles du dépôt, lues sur GitHub. Chacune se scanne. Une branche ne se teste que par son code : le site en ligne, c'est la prod.
 3. **Review** : scan de la branche comparé à celui de la branche par défaut, preview Vercel, commits, diff fichier par fichier.
 4. **Valider** ouvre la pull request.
-5. **Merger** en squash. Bloqué tant que le dernier commit n'est pas scanné, que la preview n'est pas verte, ou si la branche introduit un finding. Ces conditions sont revérifiées côté serveur, et GitHub refuse le merge si un commit arrive entre-temps. La branche est ensuite supprimée et la branche par défaut rescannée.
+5. **Merger** en squash. Bloqué tant que le dernier commit n'est pas scanné, que la preview n'est pas verte, que la branche est en retard sur la base, ou si elle introduit un finding. Ces conditions sont revérifiées côté serveur, et GitHub refuse le merge si un commit arrive entre-temps. La branche est ensuite supprimée et la branche par défaut rescannée.
+6. **Mettre à jour** une branche en retard : la base y est mergée, la preview et le scan repartent. En conflit, une branche `security/*` est recréée depuis la base actuelle, l'ancienne et sa PR sont fermées.
+7. **Production.** Après le merge, le déploiement Vercel est suivi jusqu'à 20 min, résultat sur Telegram. La page de la cible montre l'état de la prod. Avec `NUXT_VERCEL_TOKEN`, le log de build d'un déploiement en échec s'affiche, pour la prod comme pour la preview.
 
 Détail des corrections :
 
 - **Dépendances npm.** Une dépendance directe monte dans `package.json`. Une transitive reçoit un `override` limité à la version vulnérable, `"proxy-addr@2.0.7": "2.0.8"`. Une version majeure sur une transitive n'est jamais forcée.
-- **Lockfile** régénéré par `npm install --package-lock-only --ignore-scripts` : aucun code du dépôt n'est exécuté.
+- **Lockfile** régénéré par `npm install --package-lock-only --ignore-scripts` : aucun code du dépôt n'est exécuté. Puis `npm ci --dry-run`, comme Vercel l'installera. Un override qui casse un peer exact, `@tiptap/core` sans `@tiptap/pm`, repart en correction manuelle.
 - **Vérification.** Trivy repasse sur la branche. Seul ce qu'il ne voit plus est marqué corrigé.
 - **Headers HTTP** ajoutés dans `vercel.json`, seulement ceux qui ne cassent rien. CSP et `Cross-Origin-*` restent manuels.
 - **Le LLM local** ne touche pas au code. Il écrit dans la PR ce qu'il faut tester dans la preview.
@@ -76,7 +78,7 @@ Image avec les trois scanners, checksums vérifiés. Écoute sur `127.0.0.1:3003
 ```yaml
 services:
   security-scanner:
-    build: https://github.com/Keil-ENZO/security-scanner.git#v0.3.1
+    build: https://github.com/Keil-ENZO/security-scanner.git#v0.4.0
     restart: unless-stopped
     network_mode: host
     env_file: .env

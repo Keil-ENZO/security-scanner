@@ -18,7 +18,13 @@ export default defineEventHandler(async (event) => {
   ])
   // Le sha de la branche elle-même : une branche sans commit d'avance n'en a aucun dans le diff
   const headSha = branch.commit.sha
-  const checks = await checksFor(t.repo, headSha)
+  const [checks, merge] = await Promise.all([
+    checksFor(t.repo, headSha),
+    pr ? pullMergeState(t.repo, pr.number).catch(() => null) : null,
+  ])
+  // Preview rouge : la raison est dans le log de build, pas dans GitHub
+  const vercel = checks.items.find(i => /vercel/i.test(i.name) && i.state === 'failure')
+  const previewLogs = vercel ? await vercelLogs(vercel.description, vercel.url).catch(() => null) : null
 
   // Comparaison des findings de code : le site ne se scanne qu'en prod
   const db = useDb()
@@ -52,10 +58,13 @@ export default defineEventHandler(async (event) => {
     commits: compare.commits.map(c => ({ sha: c.sha, message: c.commit.message, author: c.commit.author.name, date: c.commit.author.date })),
     files: compare.files.map(f => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions, patch: f.patch ?? null })),
     checks,
+    previewLogs,
+    // false : conflits avec la base. null : GitHub calcule encore
+    conflicts: merge?.mergeable === false || merge?.state === 'dirty',
     pr: pr ? { number: pr.number, url: pr.html_url, draft: pr.draft } : null,
     scans: { base: baseScan ?? null, branch: branchScan ?? null, runningId: running?.id ?? null, upToDate: scanUpToDate },
     diff,
     fix: fix ?? null,
-    canMerge: compare.ahead_by > 0 && !!pr && !pr.draft && scanUpToDate && (checks.state === 'success' || checks.state === 'none') && !(diff?.introduced.length),
+    canMerge: compare.ahead_by > 0 && !compare.behind_by && !!pr && !pr.draft && scanUpToDate && (checks.state === 'success' || checks.state === 'none') && !(diff?.introduced.length),
   }
 })
