@@ -1,11 +1,13 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { parseAuthHeader } from './targets'
+import type { Vuln } from './versions'
 
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const
 export type Severity = typeof SEVERITIES[number]
 
 export interface Finding {
-  tool: 'trivy' | 'semgrep' | 'nuclei'
+  tool: 'trivy' | 'grype' | 'semgrep' | 'nuclei'
   severity: Severity
   title: string
   ruleId?: string
@@ -31,50 +33,29 @@ function clip(value: unknown, max = 2000) {
   return typeof value === 'string' && value ? value.slice(0, max) : undefined
 }
 
-function bestCvss(cvss: Record<string, { V3Score?: number, V40Score?: number }> | undefined) {
-  const scores = Object.values(cvss ?? {})
-    .map(c => c.V40Score ?? c.V3Score)
-    .filter((n): n is number => typeof n === 'number')
-  return scores.length ? Math.max(...scores) : undefined
-}
-
-// Dépendances, secrets et mauvaises configurations du dépôt
+// Secrets and misconfigurations of the repository. Vulnerabilities come from Grype
 export async function trivy(dir: string): Promise<Finding[]> {
   const result = await run(
     'trivy',
-    ['fs', '--quiet', '--format', 'json', '--scanners', 'vuln,secret,misconfig', '--skip-dirs', '.git', dir],
+    ['fs', '--quiet', '--format', 'json', '--scanners', 'secret,misconfig', '--skip-dirs', '.git', dir],
     { timeoutMs: 15 * 60_000 },
   )
   if (result.code !== 0) throw new Error(result.stderr.trim().slice(-500))
-  const json = JSON.parse(result.stdout)
-  const findings: Finding[] = []
+  return parseTrivy(JSON.parse(result.stdout))
+}
 
+export function parseTrivy(json: any): Finding[] {
+  const findings: Finding[] = []
   for (const res of json.Results ?? []) {
-    for (const v of res.Vulnerabilities ?? []) {
-      findings.push({
-        tool: 'trivy',
-        severity: severity(v.Severity),
-        title: `${v.PkgName} ${v.InstalledVersion} : ${v.Title ?? v.VulnerabilityID}`,
-        ruleId: v.VulnerabilityID,
-        cve: String(v.VulnerabilityID).startsWith('CVE-') ? v.VulnerabilityID : undefined,
-        cwe: joinList(v.CweIDs),
-        cvss: bestCvss(v.CVSS),
-        location: res.Target,
-        description: clip(v.Description),
-        remediation: v.FixedVersion
-          ? `Mettre à jour ${v.PkgName} vers ${v.FixedVersion}`
-          : 'Pas encore de version corrigée',
-      })
-    }
-    // Le contenu du secret n'est jamais stocké, seulement son emplacement
+    // The secret itself is never stored, only where it is
     for (const s of res.Secrets ?? []) {
       findings.push({
         tool: 'trivy',
         severity: severity(s.Severity),
-        title: `Secret : ${s.Title}`,
+        title: `Secret: ${s.Title}`,
         ruleId: s.RuleID,
         location: `${res.Target}:${s.StartLine}`,
-        remediation: 'Révoquer le secret, puis le retirer de l’historique Git',
+        remediation: 'Revoke the secret, then remove it from the Git history',
       })
     }
     for (const m of res.Misconfigurations ?? []) {
@@ -92,19 +73,91 @@ export async function trivy(dir: string): Promise<Finding[]> {
   return findings
 }
 
+// Syft and Grype stay quiet and offline about their own updates
+const ANCHORE_ENV = { SYFT_CHECK_FOR_APP_UPDATE: 'false', GRYPE_CHECK_FOR_APP_UPDATE: 'false' }
+
+// SBOM of the repository, CycloneDX JSON. Returns the file path
+export async function syft(dir: string, workDir: string) {
+  const file = join(workDir, 'sbom.cdx.json')
+  const result = await run(
+    'syft',
+    ['scan', `dir:${dir}`, '--quiet', '--exclude', './.git', '-o', `cyclonedx-json=${file}`],
+    { env: ANCHORE_ENV, timeoutMs: 10 * 60_000 },
+  )
+  if (result.code !== 0) throw new Error(result.stderr.trim().slice(-500))
+  const content = readFileSync(file, 'utf8')
+  const components = (JSON.parse(content).components ?? []).length as number
+  return { file, content, components }
+}
+
+// Grype JSON report. Source: sbom:<file> for a scan, dir:<path> for a fix
+export async function grypeReport(source: string) {
+  const result = await run(
+    'grype',
+    [source, '--quiet', '--by-cve', '-o', 'json'],
+    { env: ANCHORE_ENV, timeoutMs: 15 * 60_000 },
+  )
+  if (result.code !== 0) throw new Error(`grype: ${result.stderr.trim().slice(-500)}`)
+  return JSON.parse(result.stdout)
+}
+
+// Vulnerabilities of the dependencies, read from the SBOM
+export async function grype(sbomFile: string): Promise<Finding[]> {
+  return parseGrype(await grypeReport(`sbom:${sbomFile}`))
+}
+
+const GRYPE_SEVERITY: Record<string, Severity> = { critical: 'critical', high: 'high', medium: 'medium', low: 'low' }
+
+export function parseGrype(json: any): Finding[] {
+  return (json.matches ?? []).map((m: any): Finding => {
+    const v = m.vulnerability ?? {}
+    const a = m.artifact ?? {}
+    const fixed = v.fix?.state === 'fixed' ? joinList(v.fix.versions) : undefined
+    const scores = (v.cvss ?? []).map((c: any) => c.metrics?.baseScore).filter((n: unknown) => typeof n === 'number')
+    const cwes = [...new Set((v.cwes ?? []).map((c: any) => c.cwe).filter(Boolean))]
+    return {
+      tool: 'grype',
+      severity: GRYPE_SEVERITY[String(v.severity).toLowerCase()] ?? 'info',
+      title: `${a.name} ${a.version}: ${clip(v.description, 200) ?? v.id}`,
+      ruleId: v.id,
+      cve: String(v.id).startsWith('CVE-') ? v.id : undefined,
+      cwe: joinList(cwes),
+      cvss: scores.length ? Math.max(...scores) : undefined,
+      location: String(a.locations?.[0]?.path ?? '').replace(/^\//, '') || undefined,
+      description: clip(v.description),
+      remediation: fixed ? `Upgrade ${a.name} to ${fixed}` : 'No fixed version yet',
+    }
+  })
+}
+
+// Input of the npm fixer: vulnerabilities found in one lockfile, at the repository root
+export function lockfileVulns(json: any, lockfile: string): Vuln[] {
+  return (json.matches ?? [])
+    .filter((m: any) => (m.artifact?.locations ?? []).some((l: any) => l.path === `/${lockfile}`))
+    .map((m: any): Vuln => ({
+      name: m.artifact.name,
+      installed: m.artifact.version,
+      fixed: m.vulnerability?.fix?.state === 'fixed' ? m.vulnerability.fix.versions ?? [] : [],
+      id: m.vulnerability?.id,
+      severity: String(m.vulnerability?.severity ?? '').toLowerCase(),
+    }))
+}
+
 const SEMGREP_SEVERITY: Record<string, Severity> = { ERROR: 'high', WARNING: 'medium', INFO: 'low' }
 
-// Analyse statique du code
+// Static analysis of the code
 export async function semgrep(dir: string): Promise<Finding[]> {
   const result = await run(
     'semgrep',
     ['scan', '--config', 'p/default', '--json', '--quiet', '--metrics', 'off', '--timeout', '30', '.'],
     { cwd: dir, timeoutMs: 20 * 60_000 },
   )
-  // 0 : rien trouvé, 1 : findings
+  // 0: nothing found, 1: findings
   if (result.code !== 0 && result.code !== 1) throw new Error(result.stderr.trim().slice(-500))
-  const json = JSON.parse(result.stdout)
+  return parseSemgrep(JSON.parse(result.stdout))
+}
 
+export function parseSemgrep(json: any): Finding[] {
   return (json.results ?? []).map((r: any): Finding => ({
     tool: 'semgrep',
     severity: SEMGREP_SEVERITY[r.extra?.severity] ?? 'info',
@@ -113,11 +166,11 @@ export async function semgrep(dir: string): Promise<Finding[]> {
     cwe: joinList(r.extra?.metadata?.cwe),
     location: `${r.path}:${r.start?.line}`,
     description: clip(r.extra?.message),
-    remediation: r.extra?.fix ? `Correctif proposé : ${clip(r.extra.fix, 500)}` : undefined,
+    remediation: r.extra?.fix ? `Suggested fix: ${clip(r.extra.fix, 500)}` : undefined,
   }))
 }
 
-// Le site en ligne. Pas de templates intrusifs, débit limité
+// The live site. No intrusive templates, rate limited
 export async function nuclei(url: string, authHeader: string | null, workDir: string): Promise<Finding[]> {
   const args = [
     '-u', url,
@@ -127,7 +180,7 @@ export async function nuclei(url: string, authHeader: string | null, workDir: st
     '-rl', '30',
     '-timeout', '10',
   ]
-  // Les identifiants passent par un fichier 0600, limité au domaine, jamais sur la ligne de commande
+  // Credentials go through a 0600 file scoped to the domain, never on the command line
   if (authHeader) {
     const { key, value } = parseAuthHeader(authHeader)
     const file = join(workDir, 'nuclei-secrets.yaml')
@@ -137,9 +190,12 @@ export async function nuclei(url: string, authHeader: string | null, workDir: st
   }
   const result = await run('nuclei', args, { timeoutMs: 45 * 60_000 })
   if (result.code !== 0) throw new Error(result.stderr.trim().slice(-500))
+  return parseNuclei(result.stdout)
+}
 
+export function parseNuclei(jsonl: string): Finding[] {
   const findings: Finding[] = []
-  for (const line of result.stdout.split('\n')) {
+  for (const line of jsonl.split('\n')) {
     if (!line.trim()) continue
     let r: any
     try {
@@ -149,7 +205,7 @@ export async function nuclei(url: string, authHeader: string | null, workDir: st
       continue
     }
     const c = r.info?.classification ?? {}
-    // Un même template sort plusieurs lignes : le matcher ou la valeur extraite les distingue
+    // One template can emit several lines: the matcher or the extracted value tells them apart
     const detail = r['matcher-name'] ?? joinList(r['extracted-results'])
     findings.push({
       tool: 'nuclei',

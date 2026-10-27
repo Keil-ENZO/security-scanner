@@ -1,4 +1,4 @@
-// Tout ce qu'il faut pour décider : diff, commits, checks, et comparaison des scans
+// Everything needed to decide: diff, commits, checks, and scan comparison
 interface CompareFile { filename: string, status: string, additions: number, deletions: number, patch?: string }
 interface CompareCommit { sha: string, commit: { message: string, author: { name: string, date: string } } }
 
@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   const t = targetRepo(Number(getRouterParam(event, 'id')))
   const ref = validRef(String(getQuery(event).ref ?? ''))
   const base = await defaultBranch(t.repo)
-  if (ref === base) throw createError({ statusCode: 400, message: 'La branche par défaut n’a rien à comparer' })
+  if (ref === base) throw createError({ statusCode: 400, message: 'The default branch has nothing to compare' })
 
   const [compare, pr, branch] = await Promise.all([
     githubApi<{ ahead_by: number, behind_by: number, commits: CompareCommit[], files: CompareFile[] }>(
@@ -16,17 +16,17 @@ export default defineEventHandler(async (event) => {
     pullForBranch(t, ref),
     githubApi<{ commit: { sha: string } }>(`/repos/${t.repo}/branches/${encodeURIComponent(ref)}`),
   ])
-  // Le sha de la branche elle-même : une branche sans commit d'avance n'en a aucun dans le diff
+  // The sha of the branch itself: a branch with no commit ahead has none in the diff
   const headSha = branch.commit.sha
   const [checks, merge] = await Promise.all([
     checksFor(t.repo, headSha),
     pr ? pullMergeState(t.repo, pr.number).catch(() => null) : null,
   ])
-  // Preview rouge : la raison est dans le log de build, pas dans GitHub
+  // Red preview: the reason is in the build log, not on GitHub
   const vercel = checks.items.find(i => /vercel/i.test(i.name) && i.state === 'failure')
   const previewLogs = vercel ? await vercelLogs(vercel.description, vercel.url).catch(() => null) : null
 
-  // Comparaison des findings de code : le site ne se scanne qu'en prod
+  // Code findings comparison: the site is only scanned in production
   const db = useDb()
   const baseScan = latestScan(t.id, null)
   const branchScan = latestScan(t.id, ref)
@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
     files: compare.files.map(f => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions, patch: f.patch ?? null })),
     checks,
     previewLogs,
-    // false : conflits avec la base. null : GitHub calcule encore
+    // false: conflicts with the base. null: GitHub is still computing
     conflicts: merge?.mergeable === false || merge?.state === 'dirty',
     pr: pr ? { number: pr.number, url: pr.html_url, draft: pr.draft } : null,
     scans: { base: baseScan ?? null, branch: branchScan ?? null, runningId: running?.id ?? null, upToDate: scanUpToDate },

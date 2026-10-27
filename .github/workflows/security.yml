@@ -1,0 +1,118 @@
+name: Security
+
+# The scanner scans itself: same tools as the product, plus CodeQL.
+# Grype owns vulnerabilities, Trivy owns secrets and misconfigurations.
+# Tool versions come from scripts/tools.env, like the Docker image.
+# Results land in the Security tab as code scanning alerts
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  trivy:
+    name: Trivy, secrets and misconfigurations
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Trivy, signature and checksum verified
+        run: |
+          scripts/install-tool.sh "$RUNNER_TEMP/bin" trivy
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Report
+        run: trivy fs --quiet --scanners secret,misconfig --format sarif --output trivy.sarif .
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: always() && hashFiles('trivy.sarif') != ''
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+      - name: Gate on high and critical issues
+        run: trivy fs --quiet --scanners secret,misconfig --severity HIGH,CRITICAL --exit-code 1 .
+
+  sbom:
+    name: Syft SBOM, Grype
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Syft and Grype, signatures and checksums verified
+        run: |
+          scripts/install-tool.sh "$RUNNER_TEMP/bin" syft grype
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: SBOM of the source
+        run: syft scan dir:. --exclude ./.git -o cyclonedx-json=sbom.cdx.json -o spdx-json=sbom.spdx.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-source
+          path: sbom.*.json
+      - name: Report
+        run: grype sbom:sbom.cdx.json --by-cve -o sarif --file grype.sarif
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: always() && hashFiles('grype.sarif') != ''
+        with:
+          sarif_file: grype.sarif
+          category: grype
+      - name: Gate on fixable high and critical vulnerabilities
+        run: grype sbom:sbom.cdx.json --by-cve --only-fixed --fail-on high
+
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: . scripts/tools.env && python3 -m pip install --user "semgrep==${SEMGREP_VERSION}"
+      - name: Scan
+        run: semgrep scan --config p/default --metrics off --sarif --output semgrep.sarif --error .
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: always() && hashFiles('semgrep.sarif') != ''
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript, actions
+          queries: security-extended
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # A fresh release can be a hijacked one: wait a week before proposing it
+    cooldown:
+      default-days: 7
+    groups:
+      nuxt:
+        patterns: ['nuxt', '@nuxt/*', 'nitropack', 'vue', 'vue-router']
+      dev:
+        dependency-type: development
+    # Types follow the Node major of the runtime image
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A fresh release can be a hijacked one: wait a week before proposing it
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    # A fresh release can be a hijacked one: wait a week before proposing it
+    cooldown:
+      default-days: 7

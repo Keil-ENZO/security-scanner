@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+  # Prebuilt binaries ship as optional dependencies, no install script needed
+  unrs-resolver: false

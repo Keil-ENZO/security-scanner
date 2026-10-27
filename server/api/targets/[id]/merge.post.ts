@@ -2,39 +2,39 @@ import { z } from 'zod'
 
 const Body = z.object({ ref: z.string().max(200) })
 
-// Merge en squash, seulement si tout est vert. Les mêmes conditions que l'écran, revérifiées ici
+// Squash merge, only when everything is green. Same conditions as the screen, checked again here
 export default defineEventHandler(async (event) => {
   const t = targetRepo(Number(getRouterParam(event, 'id')))
   const ref = validRef((await readValidatedBody(event, Body.parse)).ref)
   const pr = await pullForBranch(t, ref)
-  if (!pr) throw createError({ statusCode: 409, message: 'Pas de pull request ouverte : valider d’abord' })
-  if (pr.draft) throw createError({ statusCode: 409, message: 'Pull request en brouillon' })
+  if (!pr) throw createError({ statusCode: 409, message: 'No open pull request: approve first' })
+  if (pr.draft) throw createError({ statusCode: 409, message: 'Pull request is a draft' })
 
   const branchScan = latestScan(t.id, ref)
   if (!branchScan || branchScan.sha !== pr.head.sha) {
-    throw createError({ statusCode: 409, message: 'Le dernier commit de la branche n’a pas été scanné' })
+    throw createError({ statusCode: 409, message: 'The latest commit of the branch has not been scanned' })
   }
   const checks = await checksFor(t.repo, pr.head.sha)
   if (checks.state !== 'success' && checks.state !== 'none') {
-    const reason = { pending: 'en cours', failure: 'en échec', unavailable: 'illisibles' }[checks.state] ?? checks.state
-    throw createError({ statusCode: 409, message: `Checks ${reason}${checks.warning ? ` : ${checks.warning}` : ''}` })
+    const reason = { pending: 'pending', failure: 'failing', unavailable: 'unreadable' }[checks.state] ?? checks.state
+    throw createError({ statusCode: 409, message: `Checks ${reason}${checks.warning ? `: ${checks.warning}` : ''}` })
   }
 
-  // La preview doit avoir été construite sur la base actuelle : sinon la prod n'est pas ce qui a été testé
+  // The preview must be built on the current base: otherwise production is not what was tested
   const base = await defaultBranch(t.repo)
   const compare = await githubApi<{ behind_by: number }>(`/repos/${t.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(ref)}`)
-  if (compare.behind_by) throw createError({ statusCode: 409, message: `En retard de ${compare.behind_by} commit(s) sur ${base} : mettre la branche à jour` })
+  if (compare.behind_by) throw createError({ statusCode: 409, message: `${compare.behind_by} commit(s) behind ${base}: update the branch` })
 
-  // sha : GitHub refuse le merge si un commit est arrivé entre-temps
+  // sha: GitHub refuses the merge if a commit landed in the meantime
   const merged = await githubApi<{ sha: string }>(`/repos/${t.repo}/pulls/${pr.number}/merge`, {
     method: 'PUT',
     body: { merge_method: 'squash', sha: pr.head.sha },
   })
-  // La branche part, sauf si elle est protégée
+  // The branch goes away, unless it is protected
   await githubApi(`/repos/${t.repo}/git/refs/heads/${ref}`, { method: 'DELETE' }).catch(() => {})
-  // La prod a changé : nouveau scan de la branche par défaut
-  const { scanId } = enqueueScan(t.id, 'manuel')
-  // Le merge n'est fini que quand la prod est en ligne
+  // Production changed: new scan of the default branch
+  const { scanId } = enqueueScan(t.id, 'manual')
+  // The merge is only done once production is live
   watchDeploy(t, merged.sha, ref)
   return { merged: true, scanId }
 })

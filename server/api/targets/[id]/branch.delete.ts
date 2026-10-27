@@ -1,9 +1,9 @@
-// Abandon d'une correction : seules les branches du scanner se suppriment d'ici
+// Dropping a fix: only scanner branches can be deleted from here
 export default defineEventHandler(async (event) => {
   const t = targetRepo(Number(getRouterParam(event, 'id')))
   const ref = validRef(String(getQuery(event).ref ?? ''))
   if (!ref.startsWith('security/')) {
-    throw createError({ statusCode: 403, message: 'Seules les branches security/* se suppriment d’ici' })
+    throw createError({ statusCode: 403, message: 'Only security/* branches can be deleted from here' })
   }
   const pr = await pullForBranch(t, ref)
   if (pr) {
