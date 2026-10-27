@@ -57,8 +57,9 @@ jobs:
         env:
           REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
         run: syft scan "registry:$REF" -o cyclonedx-json=sbom.cdx.json -o spdx-json=sbom.spdx.json
+      # Accepted risks, scoped CVE by CVE to upstream scanner binaries, live in .grype.yaml
       - name: Gate on fixable high and critical vulnerabilities
-        run: grype sbom:sbom.cdx.json --by-cve --only-fixed --fail-on high
+        run: grype sbom:sbom.cdx.json --config .grype.yaml --by-cve --only-fixed --fail-on high
       - name: Sign the image and attest the SBOM
         env:
           REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
