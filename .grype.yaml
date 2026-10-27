@@ -1,0 +1,234 @@
+# Accepted risks for the release gate. Read by Grype in .github/workflows/release.yml.
+#
+# Policy: only vulnerabilities inside third-party tools of the image, already on their latest
+# release, fixed upstream in Go or a library but not shipped by the tool yet.
+# Each rule names one CVE in one binary: a new CVE in the same binary still fails the gate.
+# On every bump of scripts/tools.env, delete the rules of the bumped tool, then rerun the gate.
+# Our own code and dependencies never get an exception here.
+#
+# Reviewed 2026-10-27, for the versions noted on each block.
+ignore:
+
+  # grype 0.121.0: built with a Go toolchain and modules older than the fixes
+  - vulnerability: CVE-2026-56857
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-56866
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-78659
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-78660
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-78663
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-78667
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-78669
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-94439
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-94440
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-97031
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-97032
+    reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+
+  # nuclei 3.11.1: built with a Go toolchain and modules older than the fixes
+  - vulnerability: CVE-2026-33818
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-39821
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-46600
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56851
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56853
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56854
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56855
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56857
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56859
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56862
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56864
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56865
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-56866
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-71556
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-78659
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-78660
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-78662
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-78663
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-78667
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-78669
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-84304
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-84445
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-94439
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-94440
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-97031
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-97032
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-100349
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-100351
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-100352
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-100353
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-100354
+    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/nuclei"
+
+  # syft 1.55.0: built with a Go toolchain and modules older than the fixes
+  - vulnerability: CVE-2026-56857
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-56866
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-78659
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-78660
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-78663
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-78667
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-78669
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-94439
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-94440
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-97031
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-97032
+    reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/syft"
+
+  # npm 11.21.1, the latest 11.x and 12.x both bundle undici 6.29.0. npm only regenerates lockfiles
+  - vulnerability: CVE-2026-109869
+    reason: undici bundled in npm 11.21.1, no npm release ships undici 6.29.1 yet
+    package:
+      location: "/usr/local/lib/node_modules/npm/node_modules/undici/package.json"

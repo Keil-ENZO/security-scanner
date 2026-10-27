@@ -55,3 +55,12 @@ jobs:
           done
           docker logs scanner
           exit 1
+      # Same gate as the release, so a vulnerable image never reaches a tag
+      - name: Install Syft and Grype, signatures and checksums verified
+        run: |
+          scripts/install-tool.sh "$RUNNER_TEMP/bin" syft grype
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Gate the image on fixable high and critical vulnerabilities
+        run: |
+          syft scan docker:security-scanner:ci -q -o cyclonedx-json=sbom.cdx.json
+          grype sbom:sbom.cdx.json --config .grype.yaml --by-cve --only-fixed --fail-on high
