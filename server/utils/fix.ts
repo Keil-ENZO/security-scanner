@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, type Read, unsafeConfig } from './managers'
 import { type Bump, planBumps } from './versions'
 
 // Automatic fix of a scan: a branch, some commits, then a scan of that branch.
@@ -18,25 +19,24 @@ const SAFE_HEADERS: Record<string, string> = {
 const HEADER_FINDING = 'HTTP Missing Security Headers : '
 
 // Only the root lockfile gets fixed
-async function npmVulns(dir: string) {
-  return lockfileVulns(await grypeReport(`dir:${dir}`), 'package-lock.json')
+async function lockVulns(dir: string, m: Manager) {
+  return lockfileVulns(await grypeReport(`dir:${dir}`), m.lockfile)
 }
 
-function applyBumps(dir: string, bumps: Bump[]) {
-  const path = join(dir, 'package.json')
-  const pkg = JSON.parse(readFileSync(path, 'utf8'))
-  for (const b of bumps) {
-    if (b.direct) {
-      for (const section of ['dependencies', 'devDependencies']) {
-        if (pkg[section]?.[b.name]) pkg[section][b.name] = `^${b.to}`
-      }
-    }
-    else {
-      // Override scoped to the vulnerable version only: other versions of the package stay put
-      pkg.overrides = { ...pkg.overrides, [`${b.name}@${b.from}`]: b.to }
-    }
+function readFile(dir: string): Read {
+  return (file) => {
+    const path = join(dir, file)
+    return existsSync(path) ? readFileSync(path, 'utf8') : undefined
   }
-  writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`)
+}
+
+function writeManifests(dir: string, m: Manager, bumps: Bump[]) {
+  const read = readFile(dir)
+  const files = { pkg: JSON.parse(read('package.json')!), workspace: read('pnpm-workspace.yaml') }
+  const next = applyBumps(m, files, read(m.lockfile)!, bumps)
+  writeFileSync(join(dir, 'package.json'), `${JSON.stringify(next.pkg, null, 2)}\n`)
+  if (next.workspace !== files.workspace) writeFileSync(join(dir, 'pnpm-workspace.yaml'), next.workspace!)
+  return next.skipped
 }
 
 function applyHeaders(dir: string, missing: string[]) {
@@ -57,26 +57,44 @@ function applyHeaders(dir: string, missing: string[]) {
   return added
 }
 
-const npm = (dir: string, args: string[]) =>
-  run('npm', [...args, '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: dir, timeoutMs: 10 * 60_000 })
+// Installs leave node_modules or Plug'n'Play files behind. They would slow Grype down
+const INSTALL_OUTPUT = ['node_modules', '.pnp.cjs', '.pnp.loader.mjs']
 
-// The lockfile must install the way Vercel will install it. A lone override breaks an exact peer:
+async function resetTree(dir: string, leftovers: string[]) {
+  await git(dir, ['reset', '-q', '--hard'])
+  await git(dir, ['clean', '-fdq'])
+  for (const f of leftovers) rmSync(join(dir, f), { recursive: true, force: true })
+}
+
+// The lockfile must install the way the host will install it. A lone override breaks an exact peer:
 // @tiptap/core 3.30 requires @tiptap/pm 3.30. Conflicting bumps go back to the manual list
-async function lockBumps(dir: string, bumps: Bump[], manual: string[]) {
+async function lockBumps(dir: string, m: Manager, bumps: Bump[], manual: string[]) {
+  const cmd = managerCommands(m)
+  const exec = (args: string[]) => run(cmd.bin, args, { cwd: dir, env: cmd.env, timeoutMs: 10 * 60_000 })
+  const leftovers = INSTALL_OUTPUT.filter(f => !existsSync(join(dir, f)))
   let kept = bumps
   for (let attempt = 0; attempt < 4 && kept.length; attempt++) {
-    await git(dir, ['checkout', '-q', '--', 'package.json', 'package-lock.json'])
-    applyBumps(dir, kept)
-    let check = await npm(dir, ['install', '--package-lock-only'])
-    if (check.code === 0) check = await npm(dir, ['ci', '--dry-run'])
-    if (check.code === 0) return kept
-    const culprits = kept.filter(b => check.stderr.includes(`${b.name}@`))
-    if (!/ERESOLVE/.test(check.stderr) || !culprits.length) throw new Error(`npm: ${check.stderr.trim().slice(-400)}`)
-    for (const b of culprits) manual.push(`${b.name} ${b.from} → ${b.to}: peer dependency conflict, upgrade the whole package family together`)
+    await resetTree(dir, leftovers)
+    for (const s of writeManifests(dir, m, kept)) {
+      manual.push(`${s.bump.name} ${s.bump.from} → ${s.bump.to}: ${s.reason}`)
+      kept = kept.filter(b => b !== s.bump)
+    }
+    if (!kept.length) break
+    let check = await exec(cmd.lock)
+    if (check.code === 0) check = await exec(cmd.verify)
+    if (check.code === 0) {
+      for (const f of leftovers) rmSync(join(dir, f), { recursive: true, force: true })
+      return kept
+    }
+    // pnpm and Yarn print their errors on stdout
+    const output = `${check.stdout.slice(-4000)}\n${check.stderr}`
+    const culprits = kept.filter(b => output.includes(`${b.name}@`))
+    if (!cmd.conflict.test(output) || !culprits.length) throw new Error(`${m.label}: ${output.trim().slice(-400)}`)
+    for (const b of culprits) manual.push(`${b.name} ${b.from} → ${b.to}: conflicts with the rest of the dependency tree, upgrade the whole package family together`)
     kept = kept.filter(b => !culprits.includes(b))
   }
-  await git(dir, ['checkout', '-q', '--', 'package.json', 'package-lock.json'])
-  if (kept.length) throw new Error('npm: lockfile still conflicting after 4 attempts')
+  await resetTree(dir, leftovers)
+  if (kept.length) throw new Error(`${m.label}: lockfile still conflicting after 4 attempts`)
   return kept
 }
 
@@ -113,31 +131,39 @@ async function runFix(fixId: number) {
     const branch = `security/scan-${row.scan_id}-fix-${fixId}`
     await git(src, ['checkout', '-q', '-b', branch])
 
-    // 1. npm dependencies
+    // 1. Dependencies, with the package manager of the project
     let bumps: Bump[] = []
     let fixedIds = new Set<string>()
-    if (existsSync(join(src, 'package-lock.json'))) {
-      const before = await npmVulns(src)
-      const plan = planBumps(before, JSON.parse(readFileSync(join(src, 'package.json'), 'utf8')))
+    const read = readFile(src)
+    const pkgText = read('package.json')
+    const pkg = pkgText ? JSON.parse(pkgText) : undefined
+    const m = pkg ? detectManager(pkg, read) : { error: 'No package.json at the root: no dependency fixes' }
+    const unsafe = 'error' in m ? undefined : unsafeConfig(m, read)
+    if ('error' in m) {
+      manual.push(m.error)
+    }
+    else if (unsafe) {
+      manual.push(unsafe)
+    }
+    else {
+      const before = await lockVulns(src, m)
+      const plan = planBumps(before, pkg)
       bumps = plan.bumps
       for (const v of plan.unfixable) manual.push(`${v.name} ${v.installed}: ${v.id}, no fixed version yet`)
       for (const b of plan.majors) manual.push(`${b.name} ${b.from} → ${b.to}: major version on a transitive dependency, upgrade the parent package`)
-      if (bumps.length) bumps = await lockBumps(src, bumps, manual)
+      if (bumps.length) bumps = await lockBumps(src, m, bumps, manual)
       if (bumps.length) {
         // Only trust what Grype sees afterwards
-        const after = new Set((await npmVulns(src)).map(v => `${v.name}@${v.id}`))
+        const after = new Set((await lockVulns(src, m)).map(v => `${v.name}@${v.id}`))
         fixedIds = new Set(before.filter(v => !after.has(`${v.name}@${v.id}`)).map(v => v.id))
         for (const b of bumps) {
           const ok = b.ids.filter(id => fixedIds.has(id))
           if (ok.length) done.push(`${b.name} ${b.from} → ${b.to}${b.direct ? '' : ', transitive'}${b.major ? ', ⚠️ major version' : ''}: ${ok.join(', ')}`)
           else manual.push(`${b.name} ${b.from} → ${b.to}: the upgrade did not take, check it`)
         }
-        await git(src, ['add', 'package.json', 'package-lock.json'])
-        await git(src, [...commitIdentity(), 'commit', '-q', '-m', `fix(deps): security upgrades\n\n${bumps.map(b => `- ${b.name} ${b.from} → ${b.to}`).join('\n')}`])
+        await git(src, ['add', '--', ...managerFiles(m).filter(f => existsSync(join(src, f)))])
+        await git(src, [...commitIdentity(), 'commit', '-q', '-m', `fix(deps): security upgrades with ${m.label}\n\n${bumps.map(b => `- ${b.name} ${b.from} → ${b.to}`).join('\n')}`])
       }
-    }
-    else {
-      manual.push('No package-lock.json: only npm projects get automatic fixes for now')
     }
 
     // 2. HTTP headers, through vercel.json
