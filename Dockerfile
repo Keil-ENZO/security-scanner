@@ -20,6 +20,8 @@ COPY scripts/tools.env scripts/install-tool.sh /tmp/tools/
 RUN /tmp/tools/install-tool.sh /usr/local/bin nuclei trivy syft grype
 # The npm bundled with Node lags on its own dependency fixes. npm regenerates lockfiles for fixes
 RUN . /tmp/tools/tools.env && npm install -g --ignore-scripts "npm@${NPM_VERSION}" && npm --version
+# corepack fetches pnpm and Yarn for fixes and checks their npm signatures. Pinned: Node 25 no longer bundles it
+RUN . /tmp/tools/tools.env && npm install -g --ignore-scripts "corepack@${COREPACK_VERSION}" && corepack --version
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /usr/local/bin/uv
 ENV UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_INSTALL_DIR=/opt/uv/python

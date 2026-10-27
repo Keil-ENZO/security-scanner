@@ -48,6 +48,7 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test
         run: |
+          docker run --rm --entrypoint corepack security-scanner:ci --version
           docker run -d --name scanner -e NITRO_HOST=0.0.0.0 -p 127.0.0.1:3003:3003 security-scanner:ci
           for _ in $(seq 1 30); do
             curl -fsS http://127.0.0.1:3003/api/health && exit 0
