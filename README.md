@@ -180,6 +180,10 @@ pnpm build
 
 Nuxt 4 · Nitro · SQLite through `node:sqlite` · nuxt-auth-utils · Docker
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Provided as is, without warranty. You are responsible for only scanning targets you are authorised to test.
