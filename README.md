@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Keil-ENZO/security-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/Keil-ENZO/security-scanner/actions/workflows/ci.yml)
 [![Security](https://github.com/Keil-ENZO/security-scanner/actions/workflows/security.yml/badge.svg)](https://github.com/Keil-ENZO/security-scanner/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Keil-ENZO/security-scanner/badge)](https://scorecard.dev/viewer/?uri=github.com/Keil-ENZO/security-scanner)
 
 Self-hosted security audits for your own sites and repositories.
@@ -178,3 +179,7 @@ pnpm build
 ## Stack
 
 Nuxt 4 · Nitro · SQLite through `node:sqlite` · nuxt-auth-utils · Docker
+
+## License
+
+MIT, see [LICENSE](LICENSE). Provided as is, without warranty. You are responsible for only scanning targets you are authorised to test.
