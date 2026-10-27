@@ -1,6 +1,6 @@
 # Accepted risks for the release gate. Read by Grype in .github/workflows/release.yml.
 #
-# Policy: only vulnerabilities inside third-party scanner binaries, already on their latest
+# Policy: only vulnerabilities inside third-party tools of the image, already on their latest
 # release, fixed upstream in Go or a library but not shipped by the tool yet.
 # Each rule names one CVE in one binary: a new CVE in the same binary still fails the gate.
 # On every bump of scripts/tools.env, delete the rules of the bumped tool, then rerun the gate.
@@ -226,3 +226,9 @@ ignore:
     reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
     package:
       location: "/usr/local/bin/syft"
+
+  # npm 11.21.1, the latest 11.x and 12.x both bundle undici 6.29.0. npm only regenerates lockfiles
+  - vulnerability: CVE-2026-109869
+    reason: undici bundled in npm 11.21.1, no npm release ships undici 6.29.1 yet
+    package:
+      location: "/usr/local/lib/node_modules/npm/node_modules/undici/package.json"
