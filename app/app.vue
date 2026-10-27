@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { loggedIn, clear } = useUserSession()
+const { instanceName } = useRuntimeConfig().public
 
 async function logout() {
   await $fetch('/api/logout', { method: 'POST' })
@@ -11,18 +12,27 @@ async function logout() {
 <template>
   <div class="shell">
     <header class="topbar">
-      <NuxtLink to="/" class="brand">
+      <NuxtLink
+        to="/"
+        class="brand"
+      >
         <span class="brand-mark">◆</span>
         <span>SECURITY<b>SCANNER</b></span>
       </NuxtLink>
       <div class="topbar-right">
-        <span class="node"><i class="dot" />homelab-01</span>
-        <button v-if="loggedIn" class="ghost" @click="logout">Déconnexion</button>
+        <span class="node"><i class="dot" />{{ instanceName }}</span>
+        <button
+          v-if="loggedIn"
+          class="ghost"
+          @click="logout"
+        >
+          Log out
+        </button>
       </div>
     </header>
     <main>
       <NuxtPage />
     </main>
-    <footer>Trivy · Semgrep · Nuclei · rapport par LLM local. Usage limité aux cibles autorisées.</footer>
+    <footer>Trivy · Grype · Syft · Semgrep · Nuclei · local LLM report. Only scan targets you are authorised to test.</footer>
   </div>
 </template>

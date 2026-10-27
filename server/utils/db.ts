@@ -19,7 +19,7 @@ export function useDb() {
       repo TEXT,
       url TEXT,
       auth_header TEXT,
-      weekly INTEGER NOT NULL DEFAULT 1,
+      scheduled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -51,6 +51,14 @@ export function useDb() {
     );
     CREATE INDEX IF NOT EXISTS findings_scan ON findings(scan_id);
 
+    -- One SBOM per scan of a repository, produced by Syft
+    CREATE TABLE IF NOT EXISTS sboms (
+      scan_id INTEGER PRIMARY KEY REFERENCES scans(id) ON DELETE CASCADE,
+      format TEXT NOT NULL,
+      components INTEGER NOT NULL,
+      content TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS fixes (
       id INTEGER PRIMARY KEY,
       scan_id INTEGER NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
@@ -62,24 +70,32 @@ export function useDb() {
       finished_at TEXT
     );
   `)
-  // Migrations : une colonne ajoutée par version
+  // Migrations: one column added per version
   const addColumn = (table: string, column: string, type: string) => {
     const columns = db!.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
     if (!columns.some(c => c.name === column)) db!.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
   }
   addColumn('scans', 'batch', 'TEXT')
-  // ref : branche scannée, NULL pour la branche par défaut. sha : commit réellement analysé
+  // ref: scanned branch, NULL for the default branch. sha: the commit actually analysed
   addColumn('scans', 'ref', 'TEXT')
   addColumn('scans', 'sha', 'TEXT')
   addColumn('fixes', 'branch', 'TEXT')
   addColumn('fixes', 'pr_body', 'TEXT')
-  // Un redémarrage coupe les scans en cours : la file vit en mémoire
+  // 0.5: English values and a scheduler-agnostic name
+  const targetColumns = db.prepare('PRAGMA table_info(targets)').all() as { name: string }[]
+  if (targetColumns.some(c => c.name === 'weekly')) db.exec('ALTER TABLE targets RENAME COLUMN weekly TO scheduled')
+  db.exec(`
+    UPDATE scans SET origin = 'manual' WHERE origin = 'manuel';
+    UPDATE scans SET origin = 'scheduled' WHERE origin = 'hebdo';
+    UPDATE scans SET origin = 'fix' WHERE origin = 'correction';
+  `)
+  // A restart kills running jobs: the queue lives in memory
   db.prepare(`
-    UPDATE scans SET status = 'failed', error = 'Interrompu par un redémarrage', finished_at = datetime('now')
+    UPDATE scans SET status = 'failed', error = 'Interrupted by a restart', finished_at = datetime('now')
     WHERE status IN ('queued', 'running')
   `).run()
   db.prepare(`
-    UPDATE fixes SET status = 'failed', error = 'Interrompu par un redémarrage', finished_at = datetime('now')
+    UPDATE fixes SET status = 'failed', error = 'Interrupted by a restart', finished_at = datetime('now')
     WHERE status IN ('queued', 'running')
   `).run()
   return db

@@ -1,17 +1,18 @@
 export const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'] as const
 
 export const STATUS_LABEL: Record<string, string> = {
-  queued: 'En file',
-  running: 'En cours',
-  done: 'Terminé',
-  failed: 'Échec',
-  nothing: 'Rien à faire',
+  queued: 'Queued',
+  running: 'Running',
+  done: 'Done',
+  failed: 'Failed',
+  nothing: 'Nothing to do',
 }
 
-// SQLite renvoie de l'UTC sans fuseau : affichage à l'heure de Paris
+// SQLite returns UTC without a zone. Time zone and locale come from the config
 export function formatDate(value: string | null) {
   if (!value) return '—'
-  return new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('fr-FR', {
-    timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short',
+  const { timeZone, locale } = useRuntimeConfig().public
+  return new Date(`${value.replace(' ', 'T')}Z`).toLocaleString(locale, {
+    timeZone, dateStyle: 'short', timeStyle: 'short',
   })
 }

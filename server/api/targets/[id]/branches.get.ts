@@ -1,4 +1,4 @@
-// Les branches du dépôt, lues sur GitHub, avec leur dernier scan et leur pull request
+// Repository branches, read from GitHub, with their latest scan and pull request
 interface Branch { name: string, commit: { sha: string }, protected: boolean }
 
 export default defineEventHandler(async (event) => {
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
       lastScan: lastScan.get(t.id, isDefault ? null : b.name) ?? null,
     }
   })
-  // La branche par défaut d'abord, puis celles du scanner
+  // Default branch first, then scanner branches
   list.sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || Number(b.scanner) - Number(a.scanner) || a.name.localeCompare(b.name))
   return { base, branches: list }
 })

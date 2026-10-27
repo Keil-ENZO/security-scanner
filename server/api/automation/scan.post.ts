@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
-// Appelé par le cron Hermes du jeudi. Renvoie l'identifiant du lot, en texte brut.
-// Si un lot tourne déjà, on le renvoie au lieu d'en lancer un second
+// Called by a scheduler: cron, systemd timer, CI job, agent. Returns the batch id as plain text.
+// If a batch is already running, returns it instead of starting a second one
 export default defineEventHandler((event) => {
   const db = useDb()
   const running = db.prepare(`
@@ -10,8 +10,8 @@ export default defineEventHandler((event) => {
   setHeader(event, 'content-type', 'text/plain; charset=utf-8')
   if (running) return running.batch
 
-  const targets = db.prepare('SELECT id FROM targets WHERE weekly = 1').all() as { id: number }[]
+  const targets = db.prepare('SELECT id FROM targets WHERE scheduled = 1').all() as { id: number }[]
   const batch = randomUUID()
-  for (const t of targets) enqueueScan(t.id, 'hebdo', batch)
+  for (const t of targets) enqueueScan(t.id, 'scheduled', batch)
   return batch
 })

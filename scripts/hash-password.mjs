@@ -1,12 +1,12 @@
-// Usage : node scripts/hash-password.mjs, puis taper le mot de passe
+// Usage: node scripts/hash-password.mjs, then type the password
 import { randomBytes, scryptSync } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
 const rl = createInterface({ input: process.stdin, output: process.stdout })
-rl.question('Mot de passe : ', (password) => {
+rl.question('Password: ', (password) => {
   rl.close()
   if (password.length < 12) {
-    console.error('12 caractères minimum')
+    console.error('12 characters minimum')
     process.exit(1)
   }
   const salt = randomBytes(16)

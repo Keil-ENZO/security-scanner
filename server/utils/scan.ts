@@ -9,7 +9,7 @@ interface TargetRow {
   auth_header: string | null
 }
 
-// Une seule tâche à la fois, scan ou correction : la file vit en mémoire
+// One job at a time, scan or fix: the queue lives in memory
 let queue: Promise<unknown> = Promise.resolve()
 
 export function schedule<T>(job: () => Promise<T>) {
@@ -18,7 +18,7 @@ export function schedule<T>(job: () => Promise<T>) {
   return done
 }
 
-export function enqueueScan(targetId: number, origin: 'manuel' | 'hebdo' | 'correction', batch: string | null = null, ref: string | null = null) {
+export function enqueueScan(targetId: number, origin: 'manual' | 'scheduled' | 'fix', batch: string | null = null, ref: string | null = null) {
   const { lastInsertRowid } = useDb()
     .prepare('INSERT INTO scans (target_id, origin, batch, ref) VALUES (?, ?, ?, ?)')
     .run(targetId, origin, batch, ref)
@@ -42,19 +42,20 @@ async function runScan(scanId: number) {
   mkdirSync(work, { recursive: true, mode: 0o700 })
   const findings: Finding[] = []
   const errors: string[] = []
+  let sbom: Awaited<ReturnType<typeof syft>> | null = null
 
-  // Un outil en échec n'arrête pas les autres
+  // A failing tool does not stop the others
   const step = async (name: string, fn: () => Promise<Finding[]>) => {
     try {
       findings.push(...await fn())
     }
     catch (err) {
-      errors.push(`${name} : ${message(err)}`)
+      errors.push(`${name}: ${message(err)}`)
     }
   }
 
   try {
-    // L'allowlist est revérifiée à chaque scan, pas seulement à l'ajout
+    // The allowlist is checked on every scan, not only when the target is added
     if (target.repo) {
       const repo = parseRepo(`https://github.com/${target.repo}`)
       const src = join(work, 'src')
@@ -65,10 +66,17 @@ async function runScan(scanId: number) {
       })
       if (!errors.length) {
         await step('trivy', () => trivy(src))
+        // Grype reads the SBOM: no SBOM, no Grype
+        sbom = await syft(src, work).catch((err) => {
+          errors.push(`syft: ${message(err)}`)
+          return null
+        })
+        const file = sbom?.file
+        if (file) await step('grype', () => grype(file))
         await step('semgrep', () => semgrep(src))
       }
     }
-    // Le site en ligne, c'est la prod : une branche ne se teste que par son code
+    // The live site is production: a branch is only tested through its code
     if (target.url && !target.ref) {
       const url = parseSite(target.url)
       const auth = target.auth_header ? decrypt(target.auth_header) : null
@@ -84,6 +92,10 @@ async function runScan(scanId: number) {
       insert.run(scanId, f.tool, f.severity, f.title, f.ruleId ?? null, f.cve ?? null, f.cwe ?? null,
         f.cvss ?? null, f.location ?? null, f.description ?? null, f.remediation ?? null)
     }
+    if (sbom) {
+      db.prepare('INSERT INTO sboms (scan_id, format, components, content) VALUES (?, ?, ?, ?)')
+        .run(scanId, 'cyclonedx-json', sbom.components, sbom.content)
+    }
     db.exec('COMMIT')
 
     let summary: string | null = null
@@ -91,24 +103,24 @@ async function runScan(scanId: number) {
       summary = await writeSummary(target.name, findings)
     }
     catch (err) {
-      errors.push(`rapport : ${message(err)}`)
+      errors.push(`report: ${message(err)}`)
     }
 
     db.prepare(`
       UPDATE scans SET status = 'done', summary = ?, error = ?, finished_at = datetime('now') WHERE id = ?
     `).run(summary, errors.join('\n') || null, scanId)
 
-    // Le jeudi, c'est Hermes qui envoie le récapitulatif de tout le lot
-    if (target.origin === 'manuel') {
+    // A scheduled batch gets one summary for the whole batch, sent by the caller
+    if (target.origin === 'manual') {
       const lines = [
-        `🛡️ ${target.name} : ${formatCounts(countBySeverity(findings))}`,
+        `🛡️ ${target.name}: ${formatCounts(countBySeverity(findings))}`,
         '',
-        summary ?? 'Rapport indisponible.',
+        summary ?? 'Report unavailable.',
         ...errors.map(e => `⚠️ ${e.split('\n')[0]!.slice(0, 200)}`),
         '',
         `${useRuntimeConfig().publicUrl}/scans/${scanId}`,
       ]
-      await notify(lines.join('\n')).catch(() => {})
+      await notify(lines.join('\n'))
     }
   }
   catch (err) {

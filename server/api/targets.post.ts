@@ -5,16 +5,16 @@ const Body = z.object({
   repo: z.string().trim().max(300).optional(),
   url: z.string().trim().max(500).optional(),
   authHeader: z.string().trim().max(8300).optional(),
-  weekly: z.boolean().default(true),
+  scheduled: z.boolean().default(true),
 })
 
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, Body.parse)
   if (!body.repo && !body.url) {
-    throw createError({ statusCode: 400, message: 'Un dépôt ou une URL, au moins' })
+    throw createError({ statusCode: 400, message: 'A repository or a URL, at least' })
   }
   if (body.authHeader && !body.url) {
-    throw createError({ statusCode: 400, message: 'Les identifiants servent au scan du site : URL requise' })
+    throw createError({ statusCode: 400, message: 'Credentials are for the site scan: a URL is required' })
   }
   const repo = body.repo ? parseRepo(body.repo) : null
   const url = body.url ? parseSite(body.url) : null
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const { lastInsertRowid } = useDb()
-    .prepare('INSERT INTO targets (name, repo, url, auth_header, weekly) VALUES (?, ?, ?, ?, ?)')
-    .run(body.name, repo, url, auth, body.weekly ? 1 : 0)
+    .prepare('INSERT INTO targets (name, repo, url, auth_header, scheduled) VALUES (?, ?, ?, ?, ?)')
+    .run(body.name, repo, url, auth, body.scheduled ? 1 : 0)
   return { id: Number(lastInsertRowid) }
 })

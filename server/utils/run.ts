@@ -8,8 +8,8 @@ export interface RunResult {
   stderr: string
 }
 
-// Garde-fou 2 : jamais de shell. Les scanners ne voient pas les secrets de l'app,
-// seulement un environnement minimal et ce qu'on leur passe explicitement
+// Guardrail 3: never a shell. Scanners do not see the app secrets,
+// only a minimal environment and what is passed to them explicitly
 export function run(cmd: string, args: string[], opts: { cwd?: string, env?: Record<string, string>, timeoutMs: number }) {
   return new Promise<RunResult>((resolve, reject) => {
     const env = {
@@ -27,7 +27,7 @@ export function run(cmd: string, args: string[], opts: { cwd?: string, env?: Rec
     child.stdout.on('data', (chunk: Buffer) => {
       size += chunk.length
       if (size > MAX_OUTPUT) {
-        killed = 'sortie trop volumineuse'
+        killed = 'output too large'
         child.kill('SIGKILL')
       }
       else out.push(chunk)
@@ -36,7 +36,7 @@ export function run(cmd: string, args: string[], opts: { cwd?: string, env?: Rec
       stderr = (stderr + chunk.toString('utf8')).slice(-4000)
     })
     const timer = setTimeout(() => {
-      killed = `délai de ${Math.round(opts.timeoutMs / 60000)} min dépassé`
+      killed = `timed out after ${Math.round(opts.timeoutMs / 60000)} min`
       child.kill('SIGKILL')
     }, opts.timeoutMs)
 
@@ -46,7 +46,7 @@ export function run(cmd: string, args: string[], opts: { cwd?: string, env?: Rec
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      if (killed) return reject(new Error(`${cmd} arrêté : ${killed}`))
+      if (killed) return reject(new Error(`${cmd} stopped: ${killed}`))
       resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr })
     })
   })

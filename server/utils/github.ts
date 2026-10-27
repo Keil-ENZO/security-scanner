@@ -1,21 +1,23 @@
-// API GitHub, avec le jeton du scanner. Le dépôt est toujours revérifié contre l'allowlist
+import { createError } from '#imports'
+
+// GitHub API, with the scanner token. The repository is always checked against the allowlist again
 
 const REF_RE = /^[A-Za-z0-9._/-]{1,200}$/
 
 export function validRef(ref: string) {
   if (!REF_RE.test(ref) || ref.includes('..') || ref.startsWith('-') || ref.startsWith('/') || ref.endsWith('/')) {
-    throw createError({ statusCode: 400, message: 'Nom de branche invalide' })
+    throw createError({ statusCode: 400, message: 'Invalid branch name' })
   }
   return ref
 }
 
-// $fetch non typé par les routes de Nitro : sinon l'inférence tourne en rond.
-// Lu à l'appel : au chargement du module, Nitro ne l'a pas encore défini
+// $fetch without Nitro route typing, otherwise inference loops.
+// Read at call time: Nitro has not defined it yet when the module loads
 const fetchJson = <T>(url: string, opts: object) => ($fetch as unknown as (u: string, o: object) => Promise<T>)(url, opts)
 
 export async function githubApi<T>(path: string, opts: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: object, query?: Record<string, string | number> } = {}): Promise<T> {
   const token = useRuntimeConfig().githubToken
-  if (!token) throw createError({ statusCode: 400, message: 'NUXT_GITHUB_TOKEN requis' })
+  if (!token) throw createError({ statusCode: 400, message: 'NUXT_GITHUB_TOKEN is required' })
   try {
     return await fetchJson<T>(`https://api.github.com${path}`, {
       method: opts.method ?? 'GET',
@@ -30,34 +32,34 @@ export async function githubApi<T>(path: string, opts: { method?: 'GET' | 'POST'
     })
   }
   catch (err: any) {
-    // Le chemin dit quelle permission du jeton manque
+    // The path tells which token permission is missing
     const route = path.replace(/^\/repos\/[^/]+\/[^/]+/, '').split('?')[0] || '/'
     const hint = PERMISSION_HINT.find(([re]) => re.test(route))?.[1]
     const status = err?.response?.status ?? err?.statusCode
-    const detail = err?.data?.message ?? err?.message ?? 'erreur'
+    const detail = err?.data?.message ?? err?.message ?? 'error'
     throw createError({
       statusCode: 502,
-      message: `GitHub ${opts.method ?? 'GET'} ${route} : ${detail}${status === 403 && hint ? `. Permission du jeton à ajouter : ${hint}` : ''}`,
+      message: `GitHub ${opts.method ?? 'GET'} ${route}: ${detail}${status === 403 && hint ? `. Token permission to add: ${hint}` : ''}`,
     })
   }
 }
 
 const PERMISSION_HINT: [RegExp, string][] = [
-  [/^\/commits\/[^/]+\/status/, 'Commit statuses, lecture'],
-  [/^\/commits\/[^/]+\/check-runs/, 'Checks, lecture'],
-  [/^\/pulls\/\d+\/merge/, 'Contents et Pull requests, écriture'],
-  [/^\/pulls/, 'Pull requests, lecture et écriture'],
-  [/^\/git\/refs/, 'Contents, écriture'],
-  [/^\/merges/, 'Contents, écriture'],
-  [/^\/(compare|branches)/, 'Contents, lecture'],
+  [/^\/commits\/[^/]+\/status/, 'Commit statuses, read'],
+  [/^\/commits\/[^/]+\/check-runs/, 'Checks, read'],
+  [/^\/pulls\/\d+\/merge/, 'Contents and Pull requests, write'],
+  [/^\/pulls/, 'Pull requests, read and write'],
+  [/^\/git\/refs/, 'Contents, write'],
+  [/^\/merges/, 'Contents, write'],
+  [/^\/(compare|branches)/, 'Contents, read'],
 ]
 
 export interface TargetRepo { id: number, name: string, repo: string, owner: string }
 
 export function targetRepo(id: number): TargetRepo {
   const t = useDb().prepare('SELECT id, name, repo FROM targets WHERE id = ?').get(id) as { id: number, name: string, repo: string | null } | undefined
-  if (!t) throw createError({ statusCode: 404, message: 'Cible inconnue' })
-  if (!t.repo) throw createError({ statusCode: 400, message: 'Cette cible n’a pas de dépôt' })
+  if (!t) throw createError({ statusCode: 404, message: 'Unknown target' })
+  if (!t.repo) throw createError({ statusCode: 400, message: 'This target has no repository' })
   const repo = parseRepo(`https://github.com/${t.repo}`)
   return { id: t.id, name: t.name, repo, owner: repo.split('/')[0]! }
 }
@@ -77,7 +79,7 @@ export async function pullForBranch(t: TargetRepo, ref: string) {
   return pulls[0] ?? null
 }
 
-// Statut de la preview Vercel et des checks d'un commit : failure > pending > success > none
+// Vercel preview and check status of a commit: failure > pending > success > none
 export interface Checks { state: string, preview: string | null, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
 
 export async function checksFor(repo: string, sha: string): Promise<Checks> {
@@ -99,36 +101,38 @@ export async function checksFor(repo: string, sha: string): Promise<Checks> {
       description: r.conclusion,
     })),
   ]
-  // Sans les statuts, on ne sait pas si la preview est verte : c'est bloquant
+  // Without statuses we cannot tell whether the preview is green: that blocks the merge
   if (warning) return { state: 'unavailable', preview: null, items, warning }
-  const state = items.some(i => i.state === 'failure') ? 'failure'
-    : items.some(i => i.state === 'pending') ? 'pending'
+  const state = items.some(i => i.state === 'failure')
+    ? 'failure'
+    : items.some(i => i.state === 'pending')
+      ? 'pending'
       : items.length ? 'success' : 'none'
   const preview = status.statuses.find(s => /vercel/i.test(s.context) && s.state === 'success')?.target_url ?? null
   return { state, preview, items, warning: null }
 }
 
-// Dernier scan terminé d'une branche, NULL pour la branche par défaut
+// Latest finished scan of a branch, NULL for the default branch
 export function latestScan(targetId: number, ref: string | null) {
   return useDb().prepare(`
     SELECT id, sha, created_at FROM scans WHERE target_id = ? AND status = 'done' AND ref IS ? ORDER BY id DESC LIMIT 1
   `).get(targetId, ref) as { id: number, sha: string | null, created_at: string } | undefined
 }
 
-// mergeable vaut null tant que GitHub calcule. dirty : conflits. behind : en retard sur la base
+// mergeable is null while GitHub computes it. dirty: conflicts. behind: behind the base
 export async function pullMergeState(repo: string, number: number) {
   const pr = await githubApi<{ mergeable: boolean | null, mergeable_state: string }>(`/repos/${repo}/pulls/${number}`)
   return { mergeable: pr.mergeable, state: pr.mergeable_state }
 }
 
-// Merge de la base dans la branche, côté GitHub. 409 : conflits, à résoudre autrement
+// Merge the base into the branch, on GitHub. 409: conflicts, resolved another way
 export async function updateBranch(repo: string, ref: string, base: string) {
   try {
     const res = await githubApi<{ sha: string } | undefined>(`/repos/${repo}/merges`, {
       method: 'POST',
-      body: { base: ref, head: base, commit_message: `Merge ${base} dans ${ref}` },
+      body: { base: ref, head: base, commit_message: `Merge ${base} into ${ref}` },
     })
-    // 204 : déjà à jour
+    // 204: already up to date
     return { conflict: false, sha: res?.sha ?? null }
   }
   catch (err: any) {
@@ -137,7 +141,7 @@ export async function updateBranch(repo: string, ref: string, base: string) {
   }
 }
 
-// Déploiement de production : le statut Vercel du dernier commit de la branche par défaut
+// Production deployment: the Vercel status of the latest commit on the default branch
 export async function productionDeploy(repo: string) {
   const base = await defaultBranch(repo)
   const head = await githubApi<{ sha: string, commit: { message: string, author: { date: string } } }>(`/repos/${repo}/commits/${encodeURIComponent(base)}`)
@@ -156,11 +160,11 @@ export async function productionDeploy(repo: string) {
   }
 }
 
-// Fin du log de build Vercel, si NUXT_VERCEL_TOKEN est renseigné. Lecture seule
+// Tail of the Vercel build log, when NUXT_VERCEL_TOKEN is set. Read only
 export async function vercelLogs(description: string | null, url: string | null) {
   const token = useRuntimeConfig().vercelToken
   if (!token) return null
-  // « npx vercel inspect dpl_… » dans la description, sinon le dernier segment de l'URL
+  // "npx vercel inspect dpl_…" in the description, else the last URL segment
   const fromUrl = url?.match(/\/([A-Za-z0-9]{20,})$/)?.[1]
   const id = description?.match(/dpl_[A-Za-z0-9]+/)?.[0] ?? (fromUrl ? `dpl_${fromUrl}` : null)
   if (!id) return null
