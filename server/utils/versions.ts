@@ -51,3 +51,11 @@ export function planBumps(vulns: Vuln[], pkg: { dependencies?: object, devDepend
   }
   return { bumps: safe, unfixable, majors }
 }
+
+// CVEs of a bump that Grype no longer sees, neither on the old version nor on the new one.
+// The same id on another package, or on an older copy left alone, says nothing about this bump
+export function fixedBy(b: Bump, after: Vuln[]) {
+  const ours = (v: Vuln) => v.name === b.name && (v.installed === b.from || compareVersions(v.installed, b.to) >= 0)
+  const left = new Set(after.filter(ours).map(v => v.id))
+  return b.ids.filter(id => !left.has(id))
+}

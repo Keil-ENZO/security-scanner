@@ -21,7 +21,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "nuxt": "^4.6.2",
+    "nuxt": "^4.6.3",
     "nuxt-auth-utils": "^0.5.32",
     "vue": "^3.5.44",
     "vue-router": "^5.4.0",

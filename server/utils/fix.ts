@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, type Read, unsafeConfig } from './managers'
-import { type Bump, planBumps } from './versions'
+import { type Bump, fixedBy, planBumps } from './versions'
 
 // Automatic fix of a scan: a branch, some commits, then a scan of that branch.
 // The pull request only opens on approval, from the review screen.
@@ -133,7 +133,6 @@ async function runFix(fixId: number) {
 
     // 1. Dependencies, with the package manager of the project
     let bumps: Bump[] = []
-    let fixedIds = new Set<string>()
     const read = readFile(src)
     const pkgText = read('package.json')
     const pkg = pkgText ? JSON.parse(pkgText) : undefined
@@ -154,10 +153,9 @@ async function runFix(fixId: number) {
       if (bumps.length) bumps = await lockBumps(src, m, bumps, manual)
       if (bumps.length) {
         // Only trust what Grype sees afterwards
-        const after = new Set((await lockVulns(src, m)).map(v => `${v.name}@${v.id}`))
-        fixedIds = new Set(before.filter(v => !after.has(`${v.name}@${v.id}`)).map(v => v.id))
+        const after = await lockVulns(src, m)
         for (const b of bumps) {
-          const ok = b.ids.filter(id => fixedIds.has(id))
+          const ok = fixedBy(b, after)
           if (ok.length) done.push(`${b.name} ${b.from} → ${b.to}${b.direct ? '' : ', transitive'}${b.major ? ', ⚠️ major version' : ''}: ${ok.join(', ')}`)
           else manual.push(`${b.name} ${b.from} → ${b.to}: the upgrade did not take, check it`)
         }

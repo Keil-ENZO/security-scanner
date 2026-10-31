@@ -34,7 +34,8 @@ export default defineNuxtConfig({
     publicUrl: 'http://127.0.0.1:3003',
     // Over plain HTTP, on a private network or a tailnet, NUXT_SESSION_COOKIE_SECURE=false:
     // otherwise the browser drops the cookie and the login does not stick
-    session: { cookie: { secure: true } },
+    // password: nuxt-auth-utils default, set through NUXT_SESSION_PASSWORD
+    session: { password: '', cookie: { secure: true } },
     public: {
       // Shown in the top bar, to tell instances apart
       instanceName: 'security-scanner',

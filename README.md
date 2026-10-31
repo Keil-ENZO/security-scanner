@@ -153,7 +153,7 @@ The package manager comes from `packageManager` in `package.json`, else from the
 | Yarn 1 | `yarn.lock` | `resolutions` on the package name, only when no other locked copy would be forced | `yarn install`, then with `--frozen-lockfile` |
 | Yarn 2 and later | `yarn.lock` | `resolutions` per descriptor, `"qs@6.7.0": "6.7.3"` | `yarn install --mode=update-lockfile`, then `--immutable --mode=skip-build` |
 
-Install scripts are off for all of them. pnpm skips `.pnpmfile.cjs`, Yarn ignores `yarnPath`. A Yarn project with plugins in `.yarnrc.yml` is left to fix by hand, since they would run code from the repository. Several lockfiles without `packageManager` are left alone too.
+Install scripts are off for all of them. Yarn ignores `yarnPath` and skips constraints checks. A pnpm project with a pnpmfile, or a Yarn project with plugins in `.yarnrc.yml`, is left to fix by hand, since they would run code from the repository. Several lockfiles without `packageManager` are left alone too.
 
 ## Scheduled audits
 

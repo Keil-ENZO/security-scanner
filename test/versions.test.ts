@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareVersions, pickFixed, planBumps } from '../server/utils/versions'
+import { type Bump, compareVersions, fixedBy, pickFixed, planBumps, type Vuln } from '../server/utils/versions'
 
 describe('compareVersions', () => {
   it('orders semver, ignoring prefixes and pre-release tags', () => {
@@ -55,5 +55,23 @@ describe('planBumps', () => {
       { name: 'left-pad', installed: '1.0.0', fixed: [], id: 'GHSA-x', severity: 'low' },
     ], pkg)
     expect(unfixable).toHaveLength(1)
+  })
+})
+
+describe('fixedBy', () => {
+  const bump: Bump = { name: 'cookie', from: '0.4.0', to: '0.7.0', direct: false, major: false, ids: ['CVE-1', 'CVE-2'] }
+  const vuln = (name: string, installed: string, id: string): Vuln => ({ name, installed, fixed: [], id, severity: 'high' })
+
+  it('credits the ids gone from the bumped version', () => {
+    expect(fixedBy(bump, [])).toEqual(['CVE-1', 'CVE-2'])
+    expect(fixedBy(bump, [vuln('cookie', '0.4.0', 'CVE-2')])).toEqual(['CVE-1'])
+  })
+
+  it('ignores the same id on another package or on an older copy left alone', () => {
+    expect(fixedBy(bump, [vuln('other', '1.0.0', 'CVE-1'), vuln('cookie', '0.3.0', 'CVE-1')])).toEqual(['CVE-1', 'CVE-2'])
+  })
+
+  it('does not credit an id still seen on the new version', () => {
+    expect(fixedBy(bump, [vuln('cookie', '0.7.0', 'CVE-1')])).toEqual(['CVE-2'])
   })
 })
