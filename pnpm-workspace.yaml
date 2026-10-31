@@ -2,3 +2,6 @@ allowBuilds:
   esbuild: true
   # Prebuilt binaries ship as optional dependencies, no install script needed
   unrs-resolver: false
+overrides:
+  # listhen, through nuxt, allows ^1.4.0. Drop once listhen requires 1.4.1 or later
+  node-forge: ^1.4.1
