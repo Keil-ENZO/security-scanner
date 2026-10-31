@@ -61,7 +61,7 @@ describe('managerCommands', () => {
     expect(p.lock).toEqual(expect.arrayContaining(['--ignore-scripts', '--ignore-pnpmfile', '--lockfile-only']))
     expect(p.verify).toContain('--frozen-lockfile')
     const y = managerCommands(berry)
-    expect(y.env).toMatchObject({ YARN_ENABLE_SCRIPTS: '0', YARN_IGNORE_PATH: '1', COREPACK_ENABLE_AUTO_PIN: '0' })
+    expect(y.env).toMatchObject({ YARN_ENABLE_SCRIPTS: '0', YARN_IGNORE_PATH: '1', YARN_ENABLE_CONSTRAINTS_CHECKS: '0', COREPACK_ENABLE_AUTO_PIN: '0' })
     expect(y.verify).toEqual(['yarn@4', 'install', '--immutable', '--mode=skip-build'])
   })
 
@@ -83,6 +83,27 @@ describe('unsafeConfig', () => {
   it('refuses Yarn plugins from the repository', () => {
     expect(unsafeConfig(berry, files({ '.yarnrc.yml': 'nodeLinker: node-modules\nplugins:\n  - path: .yarn/plugins/x.cjs\n' }))).toMatch(/plugins/)
     expect(unsafeConfig(berry, files({ '.yarnrc.yml': 'nodeLinker: node-modules\nyarnPath: .yarn/releases/yarn.cjs\n' }))).toBeUndefined()
+    expect(unsafeConfig(berry, files({}))).toBeUndefined()
+  })
+
+  it('reads .yarnrc.yml as YAML: quoted keys and flow mappings load plugins too', () => {
+    expect(unsafeConfig(berry, files({ '.yarnrc.yml': '"plugins":\n  - path: .yarn/plugins/x.cjs\n' }))).toMatch(/plugins/)
+    expect(unsafeConfig(berry, files({ '.yarnrc.yml': '{plugins: [{path: x.cjs}]}\n' }))).toMatch(/plugins/)
+    expect(unsafeConfig(berry, files({ '.yarnrc.yml': 'plugins: []\nplugins: []\n' }))).toMatch(/could not be read/)
+  })
+
+  it('refuses a pnpm project with a pnpmfile, wherever it is declared', () => {
+    const pnpm = manager(detectManager({}, files({ 'pnpm-lock.yaml': fixture('pnpm-9.yaml') })))
+    expect(unsafeConfig(pnpm, files({ 'pnpm-lock.yaml': fixture('pnpm-9.yaml') }))).toBeUndefined()
+    for (const map of [
+      { '.pnpmfile.cjs': 'module.exports = {}' },
+      { '.pnpmfile.mjs': 'export default {}' },
+      { 'pnpm-lock.yaml': 'lockfileVersion: \'9.0\'\n\npnpmfileChecksum: sha256-abc\n' },
+      { '.npmrc': 'global-pnpmfile=hooks.cjs\n' },
+      { 'pnpm-workspace.yaml': 'packages: []\npnpmfile: hooks/index.cjs\n' },
+    ]) {
+      expect(unsafeConfig(pnpm, files(map))).toMatch(/pnpmfile/)
+    }
   })
 })
 

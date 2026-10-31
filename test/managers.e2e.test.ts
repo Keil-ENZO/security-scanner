@@ -40,8 +40,16 @@ describe.skipIf(!E2E).each(Object.entries(PROJECTS))('fix with %s', (name, proje
     const dir = join(root, name.replace(' ', '-'))
     rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
-    const pkg = { name: 'e2e', version: '1.0.0', private: true, packageManager: project.packageManager, dependencies: { express: '4.17.1' } }
+    // Code from the repository leaves a marker if it ever runs
+    const marker = join(root, `${name.replace(' ', '-')}.ran`)
+    const mark = `node -e "require('fs').writeFileSync(${JSON.stringify(marker).replaceAll('"', '\'')}, 'ran')"`
+    const scripts = Object.fromEntries(['preinstall', 'install', 'postinstall', 'prepare'].map(s => [s, mark]))
+    const pkg = { name: 'e2e', version: '1.0.0', private: true, packageManager: project.packageManager, scripts, dependencies: { express: '4.17.1' } }
     writeFileSync(join(dir, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
+    if (project.packageManager?.startsWith('yarn@4')) {
+      writeFileSync(join(dir, '.yarnrc.yml'), 'enableConstraintsChecks: true\n')
+      writeFileSync(join(dir, 'yarn.config.cjs'), `require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran')\nmodule.exports = {}\n`)
+    }
     if (project.workspace) writeFileSync(join(dir, 'pnpm-workspace.yaml'), project.workspace)
     // Yarn needs a yarn.lock to find the project root
     if (project.lockfile === 'yarn.lock') writeFileSync(join(dir, 'yarn.lock'), '')
@@ -70,6 +78,7 @@ describe.skipIf(!E2E).each(Object.entries(PROJECTS))('fix with %s', (name, proje
     const after = await vulns(dir, m)
     const fixed = before.filter(v => !after.some(a => a.name === v.name && a.id === v.id))
     expect(fixed.length).toBeGreaterThan(before.length / 2)
+    expect(existsSync(marker)).toBe(false)
     // corepack never pins a version on its own
     expect(JSON.parse(read('package.json')!).packageManager).toBe(project.packageManager)
   }, 15 * 60_000)

@@ -97,10 +97,25 @@ export function detectManager(pkg: Record<string, any>, read: Read): Manager | {
   return { kind: berry ? 'yarn-berry' : 'yarn-classic', label: `Yarn ${major}`, lockfile, major, pinned }
 }
 
+// pnpm records the hooks in the lockfile: one written without them fails the frozen install of the host
+function usesPnpmfile(read: Read) {
+  if (read('.pnpmfile.cjs') !== undefined || read('.pnpmfile.mjs') !== undefined) return true
+  if (/^pnpmfileChecksum:/m.test(read('pnpm-lock.yaml') ?? '')) return true
+  if (/^\s*(global-)?pnpmfile\s*=/m.test(read('.npmrc') ?? '')) return true
+  const workspace = parseDocument(read('pnpm-workspace.yaml') ?? '')
+  return workspace.has('pnpmfile') || workspace.has('globalPnpmfile')
+}
+
 // Settings from the repository that would run its code during an install
 export function unsafeConfig(m: Manager, read: Read) {
-  if (m.kind === 'yarn-berry' && /^plugins:/m.test(read('.yarnrc.yml') ?? '')) {
-    return 'Yarn plugins in .yarnrc.yml would run code from the repository: upgrade by hand'
+  if (m.kind === 'pnpm' && usesPnpmfile(read)) {
+    return 'A pnpmfile shapes the lockfile and would run code from the repository: upgrade by hand'
+  }
+  if (m.kind === 'yarn-berry') {
+    // Parsed rather than matched: "plugins": or a flow mapping loads them all the same
+    const rc = parseDocument(read('.yarnrc.yml') ?? '')
+    if (rc.errors.length) return '.yarnrc.yml could not be read: upgrade by hand'
+    if (rc.has('plugins')) return 'Yarn plugins in .yarnrc.yml would run code from the repository: upgrade by hand'
   }
   return undefined
 }
@@ -112,6 +127,8 @@ const COREPACK_ENV = {
   // yarnPath in .yarnrc or .yarnrc.yml points to a script from the repository
   YARN_IGNORE_PATH: '1',
   YARN_ENABLE_SCRIPTS: '0',
+  // enableConstraintsChecks in .yarnrc.yml runs yarn.config.cjs on every install
+  YARN_ENABLE_CONSTRAINTS_CHECKS: '0',
   YARN_ENABLE_TELEMETRY: '0',
 }
 
