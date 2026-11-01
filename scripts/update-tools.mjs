@@ -33,9 +33,11 @@ export function readEnv(text) {
 }
 
 export function writeEnv(text, key, value) {
-  const line = new RegExp(`^${key}=.*$`, 'm')
-  if (!line.test(text)) throw new Error(`${key} missing from tools.env`)
-  return text.replace(line, `${key}=${value}`)
+  const lines = text.split('\n')
+  const at = lines.findIndex(l => l.startsWith(`${key}=`))
+  if (at < 0) throw new Error(`${key} missing from tools.env`)
+  lines[at] = `${key}=${value}`
+  return lines.join('\n')
 }
 
 // releases: [{ version, published }]. The newest stable release past the cooldown, on the current
