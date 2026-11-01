@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, type Read, unsafeConfig } from './managers'
+import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, type Read, settleClassic, unsafeConfig } from './managers'
 import { type Bump, fixedBy, planBumps } from './versions'
 
 // Automatic fix of a scan: a branch, some commits, then a scan of that branch.
@@ -30,13 +30,17 @@ function readFile(dir: string): Read {
   }
 }
 
-function writeManifests(dir: string, m: Manager, bumps: Bump[]) {
+function readManifests(dir: string, m: Manager) {
   const read = readFile(dir)
-  const files = { pkg: JSON.parse(read('package.json')!), workspace: read('pnpm-workspace.yaml') }
-  const next = applyBumps(m, files, read(m.lockfile)!, bumps)
+  return { files: { pkg: JSON.parse(read('package.json')!), workspace: read('pnpm-workspace.yaml') }, lock: read(m.lockfile)! }
+}
+
+function writeManifests(dir: string, m: Manager, bumps: Bump[]) {
+  const { files, lock } = readManifests(dir, m)
+  const next = applyBumps(m, files, lock, bumps)
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify(next.pkg, null, 2)}\n`)
   if (next.workspace !== files.workspace) writeFileSync(join(dir, 'pnpm-workspace.yaml'), next.workspace!)
-  return next.skipped
+  return next
 }
 
 function applyHeaders(dir: string, missing: string[]) {
@@ -75,13 +79,21 @@ async function lockBumps(dir: string, m: Manager, bumps: Bump[], manual: string[
   let kept = bumps
   for (let attempt = 0; attempt < 4 && kept.length; attempt++) {
     await resetTree(dir, leftovers)
-    for (const s of writeManifests(dir, m, kept)) {
-      manual.push(`${s.bump.name} ${s.bump.from} → ${s.bump.to}: ${s.reason}`)
-      kept = kept.filter(b => b !== s.bump)
-    }
+    const written = writeManifests(dir, m, kept)
+    for (const s of written.skipped) manual.push(`${s.bump.name} ${s.bump.from} → ${s.bump.to}: ${s.reason}`)
+    kept = written.bumps
     if (!kept.length) break
     let check = await exec(cmd.lock)
     if (check.code === 0) check = await exec(cmd.verify)
+    if (check.code === 0) {
+      const { files, lock } = readManifests(dir, m)
+      const settled = settleClassic(m, files, lock, kept)
+      if (settled) {
+        for (const s of settled.skipped) manual.push(`${s.bump.name} ${s.bump.from} → ${s.bump.to}: ${s.reason}`)
+        kept = settled.bumps
+        continue
+      }
+    }
     if (check.code === 0) {
       for (const f of leftovers) rmSync(join(dir, f), { recursive: true, force: true })
       return kept

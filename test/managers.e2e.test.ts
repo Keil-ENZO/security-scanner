@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { applyBumps, detectManager, type Manager, managerCommands } from '../server/utils/managers'
+import { satisfies, validRange } from 'semver'
+import { applyBumps, detectManager, type Manager, managerCommands, parseYarnLock, settleClassic, splitDescriptor } from '../server/utils/managers'
 import { run } from '../server/utils/run'
 import { lockfileVulns } from '../server/utils/scanners'
 import { planBumps } from '../server/utils/versions'
@@ -69,11 +70,32 @@ describe.skipIf(!E2E).each(Object.entries(PROJECTS))('fix with %s', (name, proje
     const plan = planBumps(before, pkg)
     expect(plan.bumps.length).toBeGreaterThan(1)
 
-    const next = applyBumps(m, { pkg, workspace: read('pnpm-workspace.yaml') }, read(m.lockfile)!, plan.bumps)
-    writeFileSync(join(dir, 'package.json'), `${JSON.stringify(next.pkg, null, 2)}\n`)
-    if (next.workspace) writeFileSync(join(dir, 'pnpm-workspace.yaml'), next.workspace)
-    await exec(dir, cmd.bin, cmd.lock, cmd.env)
-    await exec(dir, cmd.bin, cmd.verify, cmd.env)
+    // Same as the fixer: Yarn 1 checks the new lockfile again, a bumped parent brings new ranges
+    let bumps = plan.bumps
+    const workspace = read('pnpm-workspace.yaml')
+    const original = read(m.lockfile)!
+    for (let round = 0; round < 4 && bumps.length; round++) {
+      writeFileSync(join(dir, m.lockfile), original)
+      const next = applyBumps(m, { pkg, workspace }, original, bumps)
+      bumps = next.bumps
+      writeFileSync(join(dir, 'package.json'), `${JSON.stringify(next.pkg, null, 2)}\n`)
+      if (next.workspace) writeFileSync(join(dir, 'pnpm-workspace.yaml'), next.workspace)
+      await exec(dir, cmd.bin, cmd.lock, cmd.env)
+      await exec(dir, cmd.bin, cmd.verify, cmd.env)
+      const settled = settleClassic(m, { pkg, workspace }, read(m.lockfile)!, bumps)
+      if (!settled) break
+      bumps = settled.bumps
+    }
+
+    if (m.kind === 'yarn-classic') {
+      // Every dependent outside the fixed ranges still gets a version it accepts
+      const forced = new Set(bumps.filter(b => !b.direct).map(b => b.name))
+      const broken = parseYarnLock(read(m.lockfile)!).flatMap(e => e.descriptors.map(splitDescriptor)
+        .filter(d => forced.has(d.name) && validRange(d.range) && !satisfies(e.version, d.range))
+        .filter(d => !bumps.some(b => b.name === d.name && satisfies(b.from, d.range)))
+        .map(d => `${d.name}@${d.range} → ${e.version}`))
+      expect(broken).toEqual([])
+    }
 
     const after = await vulns(dir, m)
     const fixed = before.filter(v => !after.some(a => a.name === v.name && a.id === v.id))
