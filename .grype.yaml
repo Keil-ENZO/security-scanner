@@ -6,7 +6,7 @@
 # On every bump of scripts/tools.env, delete the rules of the bumped tool, then rerun the gate.
 # Our own code and dependencies never get an exception here.
 #
-# Reviewed 2026-10-31, for the versions noted on each block.
+# Reviewed 2026-11-01, for the versions noted on each block. Every rule still matches the 0.5.2 image.
 ignore:
 
   # grype 0.121.0: built with a Go toolchain and modules older than the fixes
@@ -161,26 +161,6 @@ ignore:
     package:
       location: "/usr/local/bin/nuclei"
   - vulnerability: CVE-2026-97032
-    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
-    package:
-      location: "/usr/local/bin/nuclei"
-  - vulnerability: CVE-2026-100349
-    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
-    package:
-      location: "/usr/local/bin/nuclei"
-  - vulnerability: CVE-2026-100351
-    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
-    package:
-      location: "/usr/local/bin/nuclei"
-  - vulnerability: CVE-2026-100352
-    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
-    package:
-      location: "/usr/local/bin/nuclei"
-  - vulnerability: CVE-2026-100353
-    reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
-    package:
-      location: "/usr/local/bin/nuclei"
-  - vulnerability: CVE-2026-100354
     reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
     package:
       location: "/usr/local/bin/nuclei"
