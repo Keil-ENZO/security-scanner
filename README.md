@@ -187,7 +187,7 @@ pnpm build
 - **CI** runs lint, typecheck, tests, build, and a smoke test of the Docker image on every push and PR.
 - **The scanner scans itself.** Syft with Grype, Trivy for secrets and misconfigurations, and Semgrep on every push, plus CodeQL. Results go to the Security tab. Fixable high and critical issues fail the build. The source SBOM is kept as a build artifact.
 - **Dependency review** blocks PRs that add a high severity vulnerability.
-- **Pinned everything.** GitHub Actions by commit SHA, base images by digest. Dependabot keeps them current. Scanner versions live in `scripts/tools.env`, bumped by hand.
+- **Pinned everything.** GitHub Actions by commit SHA, base images by digest. Dependabot keeps them current. Scanner versions live in `scripts/tools.env`. A weekly workflow opens a pull request for releases at least a week old, on the same major. It drops the `.grype.yaml` rules of the bumped tools, and the pinned cosign verifies a new cosign before its hash gets pinned.
 - **Verified downloads.** `scripts/install-tool.sh` trusts one pinned hash, the cosign binary. Cosign then verifies the signed checksums of Trivy, Syft and Grype before any archive is used.
 - **Releases** on `v*` tags: image on GHCR, SBOM by Syft, Grype blocks fixable high and critical vulnerabilities, cosign signs the image and attests the SBOM. SLSA provenance on top.
 - **OpenSSF Scorecard** publishes the repository score weekly.
