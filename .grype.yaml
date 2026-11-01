@@ -4,6 +4,7 @@
 # release, fixed upstream in Go or a library but not shipped by the tool yet.
 # Each rule names one CVE in one binary: a new CVE in the same binary still fails the gate.
 # On every bump of scripts/tools.env, delete the rules of the bumped tool, then rerun the gate.
+# scripts/update-tools.mjs does the deletion for the weekly bumps.
 # Our own code and dependencies never get an exception here.
 #
 # Reviewed 2026-11-01, for the versions noted on each block. Every rule still matches the 0.5.2 image.

@@ -1,0 +1,66 @@
+name: Tools
+
+# Weekly bump of the scanner versions in scripts/tools.env, as a pull request.
+# CI, the Docker smoke test and the Grype image gate then judge the new binaries.
+# Pull requests opened with the default token start no workflow: set a TOOLS_PR_TOKEN secret,
+# a fine-grained token with Contents and Pull requests write on this repository, for checks to run
+on:
+  schedule:
+    - cron: '41 5 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tools
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Bump scanner versions
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      BRANCH: chore/tools-update
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Pinned cosign, verifies a new cosign before its hash is pinned
+        run: scripts/install-tool.sh "$RUNNER_TEMP/bin" cosign
+      - name: Bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COSIGN: ${{ runner.temp }}/bin/cosign
+        run: node scripts/update-tools.mjs "$RUNNER_TEMP/summary.md"
+      - name: Pull request
+        env:
+          GH_TOKEN: ${{ secrets.TOOLS_PR_TOKEN || github.token }}
+        run: |
+          if git diff --quiet; then
+            echo "Nothing to bump"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -C "$BRANCH"
+          { echo 'chore(tools): bump scanner versions'; echo; cat "$RUNNER_TEMP/summary.md"; } > "$RUNNER_TEMP/message.txt"
+          git commit -qa -F "$RUNNER_TEMP/message.txt"
+          # The token stays out of the remote URL and of the earlier steps
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+            push --force origin "HEAD:refs/heads/$BRANCH"
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/summary.md"
+          else
+            gh pr create --head "$BRANCH" --title 'Bump scanner versions' --body-file "$RUNNER_TEMP/summary.md"
+          fi

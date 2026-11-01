@@ -39,3 +39,5 @@ CI runs the same checks, plus the security scans and a Docker smoke test.
 ## Scanner versions
 
 Scanner versions live in `scripts/tools.env`. A bump there updates the Docker image and the CI together.
+
+The Tools workflow bumps them every week with `scripts/update-tools.mjs`, as a pull request. New majors stay manual. For checks to run on that pull request, add a `TOOLS_PR_TOKEN` secret: a fine-grained token with Contents and Pull requests write on the repository.
