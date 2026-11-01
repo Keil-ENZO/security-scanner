@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, parseYarnLock, splitDescriptor, unsafeConfig } from '../server/utils/managers'
+import { applyBumps, classicTarget, detectManager, type Manager, managerCommands, managerFiles, parseYarnLock, settleClassic, splitDescriptor, unsafeConfig } from '../server/utils/managers'
 import type { Bump } from '../server/utils/versions'
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/lockfiles/${name}`, import.meta.url), 'utf8')
@@ -182,11 +182,93 @@ describe('applyBumps', () => {
     expect(blocked.skipped[0]!.reason).toMatch(/4\.3\.1/)
   })
 
+  it('Yarn 1: the resolution lands where every other dependent range still holds', () => {
+    const m = manager(detectManager({}, files({ 'yarn.lock': fixture('yarn-classic.lock') })))
+    // express 4.22.3 asks for cookie ~0.7.1: the planned 0.7.0 would break it
+    const lock = classicLock({ 'cookie@0.6.0': '0.6.0', 'cookie@~0.7.1': '0.7.1' })
+    const next = applyBumps(m, { pkg }, lock, [bump('cookie', '0.6.0', '0.7.0')])
+    expect(next.pkg.resolutions).toEqual({ cookie: '0.7.1' })
+    expect(next.bumps.map(b => b.to)).toEqual(['0.7.1'])
+  })
+
   it('Yarn Berry: one resolution per descriptor of the vulnerable version', () => {
     const lock = fixture('yarn-berry.lock')
     const m = manager(detectManager({}, files({ 'yarn.lock': lock })))
     const next = applyBumps(m, { pkg }, lock, [bump('debug', '2.6.9', '2.6.10'), bump('qs', '6.7.0', '6.7.3'), bump('ms', '2.0.0', '2.0.1')])
     expect(next.pkg.resolutions).toEqual({ 'debug@2.6.9': '2.6.10', 'debug@^2.2.0': '2.6.10', 'qs@6.7.0': '6.7.3' })
     expect(next.skipped.map(s => s.bump.name)).toEqual(['ms'])
+  })
+})
+
+// Yarn 1 lockfile out of descriptor → locked version
+const classicLock = (entries: Record<string, string>) =>
+  Object.entries(entries).map(([d, v]) => `"${d}":\n  version "${v}"\n`).join('\n')
+
+describe('classicTarget', () => {
+  it('keeps the planned version when nothing else is locked', () => {
+    expect(classicTarget(classicLock({ 'qs@6.7.0': '6.7.0' }), bump('qs', '6.7.0', '6.7.3'))).toEqual({ to: '6.7.3' })
+  })
+
+  it('ignores the ranges being fixed, even once forced to the new version', () => {
+    // After the install, Yarn 1 records the forced version on the old descriptor
+    const lock = classicLock({ 'cookie@0.6.0': '0.7.0', 'cookie@^0.6.0': '0.7.0' })
+    expect(classicTarget(lock, bump('cookie', '0.6.0', '0.7.0'))).toEqual({ to: '0.7.0' })
+  })
+
+  it('raises the version to the lowest one a new dependent range accepts', () => {
+    // New lockfile after the express bump: serve-static ~1.16.2 got 1.16.0, next to the resolution itself
+    const lock = classicLock({ 'serve-static@1.13.2': '1.16.0', 'serve-static@1.16.0': '1.16.0', 'serve-static@~1.16.2': '1.16.0' })
+    expect(classicTarget(lock, bump('serve-static', '1.13.2', '1.16.0'))).toEqual({ to: '1.16.2' })
+  })
+
+  it('never downgrades a copy already locked higher', () => {
+    const lock = classicLock({ 'cookie@0.6.0': '0.6.0', 'cookie@^0.7.0': '0.7.2' })
+    expect(classicTarget(lock, bump('cookie', '0.6.0', '0.7.0'))).toEqual({ to: '0.7.2' })
+  })
+
+  it('reports ranges no single version can satisfy', () => {
+    const lock = classicLock({ 'cookie@0.6.0': '0.6.0', 'cookie@~0.7.1': '0.7.1', 'cookie@0.7.0': '0.7.0' })
+    expect(classicTarget(lock, bump('cookie', '0.6.0', '0.6.1'))).toEqual({
+      conflicts: ['cookie@~0.7.1 (locked 0.7.1)', 'cookie@0.7.0 (locked 0.7.0)'],
+    })
+  })
+
+  it('refuses to move a copy from another major, even when its range would allow it', () => {
+    const lock = classicLock({ 'debug@2.6.9': '2.6.9', 'debug@>=2': '4.3.1' })
+    expect(classicTarget(lock, bump('debug', '2.6.9', '2.6.10'))).toEqual({ conflicts: ['debug@>=2 (locked 4.3.1)'] })
+  })
+
+  it('treats ranges it cannot read as conflicts', () => {
+    const lock = classicLock({ 'qs@6.7.0': '6.7.0', 'qs@github:ljharb/qs': '6.13.0' })
+    expect(classicTarget(lock, bump('qs', '6.7.0', '6.7.3'))).toHaveProperty('conflicts')
+  })
+})
+
+describe('settleClassic', () => {
+  const pkg = { dependencies: { express: '^4.20.0' } }
+  const yarn1 = manager(detectManager({}, files({ 'yarn.lock': fixture('yarn-classic.lock') })))
+
+  it('raises first, and keeps the bumps it cannot place yet for another round', () => {
+    // send@0.18.0 comes from the old serve-static: raising serve-static drops it
+    const lock = classicLock({
+      'cookie@0.7.0': '0.7.0', 'cookie@~0.7.1': '0.7.0',
+      'send@0.18.0': '0.19.0', 'send@0.19.0': '0.19.0',
+    })
+    const bumps = [bump('cookie', '0.4.0', '0.7.0'), bump('send', '0.17.1', '0.19.0')]
+    expect(settleClassic(yarn1, { pkg }, lock, bumps)).toEqual({ bumps: [{ ...bumps[0], to: '0.7.1' }, bumps[1]], skipped: [] })
+  })
+
+  it('drops what no version can satisfy once nothing moves', () => {
+    const lock = classicLock({ 'send@0.18.0': '0.19.0', 'send@0.19.0': '0.19.0' })
+    const next = settleClassic(yarn1, { pkg }, lock, [bump('send', '0.17.1', '0.19.0')])
+    expect(next?.bumps).toEqual([])
+    expect(next?.skipped[0]!.reason).toMatch(/send@0\.18\.0/)
+  })
+
+  it('holds when every range is satisfied, and never applies to other managers', () => {
+    const lock = classicLock({ 'cookie@0.7.1': '0.7.1', 'cookie@~0.7.1': '0.7.1' })
+    expect(settleClassic(yarn1, { pkg }, lock, [bump('cookie', '0.4.0', '0.7.1')])).toBeUndefined()
+    const npm = manager(detectManager({}, files({ 'package-lock.json': '{}' })))
+    expect(settleClassic(npm, { pkg }, lock, [bump('cookie', '0.4.0', '0.7.0')])).toBeUndefined()
   })
 })

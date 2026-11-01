@@ -1,3 +1,4 @@
+import { minVersion, satisfies, validRange } from 'semver'
 import { parseDocument } from 'yaml'
 import { type Bump, compareVersions, parseVersion } from './versions'
 
@@ -209,18 +210,34 @@ export function splitDescriptor(descriptor: string) {
   return at < 0 ? { name: descriptor, range: '' } : { name: descriptor.slice(0, at), range: descriptor.slice(at + 1) }
 }
 
-function yarnResolutions(m: Manager, lock: string, b: Bump): Record<string, string> | string {
-  const entries = parseYarnLock(lock)
-  const own = entries.filter(e => e.descriptors.some(d => splitDescriptor(d).name === b.name))
-  if (m.kind === 'yarn-classic') {
-    // Yarn 1 resolutions match a name, not a version: every locked copy moves to the new version
-    const others = [...new Set(own.map(e => e.version))].filter(v => v !== b.from)
-    const blocking = others.filter(v => parseVersion(v)[0] !== parseVersion(b.from)[0] || compareVersions(v, b.to) > 0)
-    if (blocking.length) return `other versions are locked (${blocking.join(', ')}), a Yarn 1 resolution would force them all`
-    return { [b.name]: b.to }
-  }
-  // Yarn 2+: one resolution per descriptor that resolved to the vulnerable version
-  const ranges = own.filter(e => e.version === b.from)
+// Yarn 1 resolutions match a name, not a version: every copy moves to one version.
+// Copies on another version belong to dependents the fix must not break. express 4.22.3 asks for
+// cookie ~0.7.1: a resolution to 0.7.0 hands it a version out of range. Ranges that accept the
+// vulnerable version are the ones being fixed, and Yarn 1 records the resolution itself as one more
+// descriptor, name@version. Picks the lowest version from the fix up that every
+// other range accepts, never below a copy already locked, never on another major
+export function classicTarget(lock: string, b: Bump): { to: string } | { conflicts: string[] } {
+  const others = parseYarnLock(lock).filter(e => e.version !== b.from)
+    .flatMap(e => e.descriptors.map(splitDescriptor)
+      .filter(d => d.name === b.name && d.range !== b.to)
+      .map(d => ({ ...d, version: e.version, valid: Boolean(validRange(d.range)) })))
+  const ranges = others.filter(d => !d.valid || !satisfies(b.from, d.range))
+  const fits = (v: string, d: typeof others[number]) => d.valid && satisfies(v, d.range)
+  const accepts = (v: string) => ranges.every(d => fits(v, d))
+  const floor = [b.to, ...others.map(d => d.version)].sort(compareVersions).at(-1)!
+  const sameMajor = (v: string) => parseVersion(v)[0] === parseVersion(b.from)[0]
+  const to = [floor, ...ranges.filter(d => d.valid).map(d => minVersion(d.range)?.version ?? floor)]
+    .filter(v => compareVersions(v, floor) >= 0 && sameMajor(v))
+    .sort(compareVersions)
+    .find(accepts)
+  if (to) return { to }
+  const blocking = others.filter(d => !sameMajor(d.version) || ranges.includes(d))
+  return { conflicts: blocking.map(d => `${b.name}@${d.range} (locked ${d.version})`) }
+}
+
+// Yarn 2+: one resolution per descriptor that resolved to the vulnerable version
+function berryResolutions(lock: string, b: Bump): Record<string, string> | string {
+  const ranges = parseYarnLock(lock).filter(e => e.version === b.from)
     .flatMap(e => e.descriptors.map(splitDescriptor))
     .filter(d => d.name === b.name && /^(npm:)?[^:@]+$/.test(d.range))
     .map(d => d.range.replace(/^npm:/, ''))
@@ -235,18 +252,21 @@ function pnpmInWorkspace(m: Manager, files: Manifests) {
   return parseDocument(files.workspace ?? '').hasIn(['overrides'])
 }
 
-// Direct dependencies get a new range. Transitive ones get an override scoped to the vulnerable version
+// Direct dependencies get a new range. Transitive ones get an override scoped to the vulnerable version.
+// Returns the bumps as applied: a Yarn 1 resolution can land above the planned version
 export function applyBumps(m: Manager, files: Manifests, lock: string, bumps: Bump[]) {
   const pkg = structuredClone(files.pkg)
   const workspace = parseDocument(files.workspace ?? '')
   const skipped: Skipped[] = []
+  const applied: Bump[] = []
   const toWorkspace = m.kind === 'pnpm' && pnpmInWorkspace(m, files)
   let workspaceChanged = false
-  for (const b of bumps) {
+  for (let b of bumps) {
     if (b.direct) {
       for (const section of ['dependencies', 'devDependencies']) {
         if (pkg[section]?.[b.name]) pkg[section][b.name] = `^${b.to}`
       }
+      applied.push(b)
       continue
     }
     const key = `${b.name}@${b.from}`
@@ -260,15 +280,42 @@ export function applyBumps(m: Manager, files: Manifests, lock: string, bumps: Bu
     else if (m.kind === 'pnpm') {
       pkg.pnpm = { ...pkg.pnpm, overrides: { ...pkg.pnpm?.overrides, [key]: b.to } }
     }
-    else {
-      const resolutions = yarnResolutions(m, lock, b)
-      if (typeof resolutions === 'string') skipped.push({ bump: b, reason: resolutions })
-      else pkg.resolutions = { ...pkg.resolutions, ...resolutions }
+    else if (m.kind === 'yarn-classic') {
+      const target = classicTarget(lock, b)
+      if ('conflicts' in target) {
+        skipped.push({ bump: b, reason: `a Yarn 1 resolution forces every copy, out of range for ${target.conflicts.join(', ')}` })
+        continue
+      }
+      if (target.to !== b.to) b = { ...b, to: target.to }
+      pkg.resolutions = { ...pkg.resolutions, [b.name]: b.to }
     }
+    else {
+      const resolutions = berryResolutions(lock, b)
+      if (typeof resolutions === 'string') {
+        skipped.push({ bump: b, reason: resolutions })
+        continue
+      }
+      pkg.resolutions = { ...pkg.resolutions, ...resolutions }
+    }
+    applied.push(b)
   }
   return {
     pkg,
+    bumps: applied,
     workspace: workspaceChanged ? String(workspace) : files.workspace,
     skipped,
   }
+}
+
+// Yarn 1: a bumped parent brings ranges the old lockfile did not have, so the new lockfile is checked
+// the same way. Raises come first: a raised parent can drop the range that blocks another bump.
+// The bumps for another round, or undefined when the lockfile holds
+export function settleClassic(m: Manager, files: Manifests, lock: string, bumps: Bump[]) {
+  if (m.kind !== 'yarn-classic') return undefined
+  const next = applyBumps(m, files, lock, bumps)
+  const same = (a: Bump) => (b: Bump) => a.name === b.name && a.from === b.from
+  if (next.bumps.some(b => b.to !== bumps.find(same(b))!.to)) {
+    return { bumps: bumps.map(b => next.bumps.find(same(b)) ?? b), skipped: [] }
+  }
+  return next.skipped.length ? { bumps: next.bumps, skipped: next.skipped } : undefined
 }
