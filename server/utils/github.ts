@@ -47,6 +47,7 @@ export async function githubApi<T>(path: string, opts: { method?: 'GET' | 'POST'
 const PERMISSION_HINT: [RegExp, string][] = [
   [/^\/commits\/[^/]+\/status/, 'Commit statuses, read'],
   [/^\/commits\/[^/]+\/check-runs/, 'Checks, read'],
+  [/^\/deployments/, 'Deployments, read'],
   [/^\/pulls\/\d+\/merge/, 'Contents and Pull requests, write'],
   [/^\/pulls/, 'Pull requests, read and write'],
   [/^\/git\/refs/, 'Contents, write'],
