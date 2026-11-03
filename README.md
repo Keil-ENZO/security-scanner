@@ -119,6 +119,7 @@ Use a fine-grained token limited to the repositories you scan.
 - **Contents**: read to clone private repositories, write to push fix branches and merge.
 - **Pull requests**: write, to open and merge pull requests.
 - **Commit statuses** and **Checks**: read, for the Vercel preview and CI state.
+- **Deployments**: read, for hosts that report to GitHub Deployments, such as Render, Railway or Fly.
 
 `git` runs without global or system config: no credential other than this token can be used.
 
