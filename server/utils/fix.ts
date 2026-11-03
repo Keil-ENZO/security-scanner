@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, type Read, settleClassic, unsafeConfig } from './managers'
+import { type DeployProvider, deployProvider } from './providers'
 import { type Bump, fixedBy, planBumps } from './versions'
 
 // Automatic fix of a scan: a branch, some commits, then a scan of that branch.
@@ -43,22 +44,11 @@ function writeManifests(dir: string, m: Manager, bumps: Bump[]) {
   return next
 }
 
-function applyHeaders(dir: string, missing: string[]) {
-  const path = join(dir, 'vercel.json')
-  const config = existsSync(path)
-    ? JSON.parse(readFileSync(path, 'utf8'))
-    : { $schema: 'https://openapi.vercel.sh/vercel.json' }
-  config.headers ??= []
-  let rule = config.headers.find((h: any) => h.source === '/(.*)')
-  if (!rule) {
-    rule = { source: '/(.*)', headers: [] }
-    config.headers.push(rule)
-  }
-  const present = new Set(rule.headers.map((h: any) => String(h.key).toLowerCase()))
-  const added = missing.filter(h => !present.has(h))
-  for (const key of added) rule.headers.push({ key, value: SAFE_HEADERS[key]! })
-  if (added.length) writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`)
-  return added
+// Adds the missing headers in the config file of the provider. Returns the ones added
+function applyHeaders(dir: string, provider: DeployProvider, missing: string[]) {
+  const edit = provider.writeHeaders(readFile(dir)(provider.headersFile), Object.fromEntries(missing.map(h => [h, SAFE_HEADERS[h]!])))
+  if (edit.added.length) writeFileSync(join(dir, provider.headersFile), edit.content)
+  return edit.added
 }
 
 // Installs leave node_modules or Plug'n'Play files behind. They would slow Grype down
@@ -176,16 +166,17 @@ async function runFix(fixId: number) {
       }
     }
 
-    // 2. HTTP headers, through vercel.json
+    // 2. HTTP headers, in the config file of the provider
+    const provider = deployProvider()
     const findings = db.prepare(`SELECT title FROM findings WHERE scan_id = ? AND tool = 'nuclei' AND title LIKE ?`)
       .all(row.scan_id, `${HEADER_FINDING}%`) as { title: string }[]
     const missing = findings.map(f => f.title.slice(HEADER_FINDING.length).trim().toLowerCase())
     const safe = missing.filter(h => SAFE_HEADERS[h])
     for (const h of missing.filter(h => !SAFE_HEADERS[h])) manual.push(`Header ${h}: set it by hand, it can break the app`)
-    const added = safe.length ? applyHeaders(src, safe) : []
+    const added = safe.length ? applyHeaders(src, provider, safe) : []
     if (added.length) {
-      done.push(`Headers added to vercel.json: ${added.join(', ')}`)
-      await git(src, ['add', 'vercel.json'])
+      done.push(`Headers added to ${provider.headersFile}: ${added.join(', ')}`)
+      await git(src, ['add', '--', provider.headersFile])
       await git(src, [...commitIdentity(), 'commit', '-q', '-m', `fix(headers): security headers\n\n${added.map(h => `- ${h}`).join('\n')}`])
     }
 
