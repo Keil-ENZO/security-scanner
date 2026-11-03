@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, type Read, settleClassic, unsafeConfig } from './managers'
 import { type DeployProvider, deployProvider } from './providers'
 import { type Bump, fixedBy, planBumps } from './versions'
@@ -52,7 +52,11 @@ function applyHeaders(dir: string, provider: DeployProvider, missing: string[], 
     return []
   }
   const edit = provider.writeHeaders(readFile(dir)(provider.headersFile), Object.fromEntries(missing.map(h => [h, SAFE_HEADERS[h]!])))
-  if (edit.added.length) writeFileSync(join(dir, provider.headersFile), edit.content)
+  if (edit.added.length) {
+    // public/_headers for Cloudflare: the folder may not exist yet
+    mkdirSync(dirname(join(dir, provider.headersFile)), { recursive: true })
+    writeFileSync(join(dir, provider.headersFile), edit.content)
+  }
   return edit.added
 }
 
