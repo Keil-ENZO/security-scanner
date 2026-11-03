@@ -1,3 +1,4 @@
+import { netlifyProvider } from './deploy-netlify'
 import { type CheckItem, type Checks, fetchJson } from './github'
 
 // Where a target deploys. A provider finds the deployment of a commit among its GitHub checks,
@@ -56,7 +57,7 @@ const vercel: DeployProvider = {
   },
 }
 
-export const providers = { vercel } satisfies Record<string, DeployProvider>
+export const providers = { vercel, netlify: netlifyProvider } satisfies Record<string, DeployProvider>
 
 // Vercel until targets store their provider
 export function deployProvider(): DeployProvider {
