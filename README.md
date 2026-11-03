@@ -103,6 +103,7 @@ Everything goes through environment variables. `.env.example` lists them all.
 | `NUXT_GIT_AUTHOR_NAME`, `NUXT_GIT_AUTHOR_EMAIL` | | Author of the fix commits |
 | `NUXT_VERCEL_TOKEN` | | Build log of failed Vercel deployments |
 | `NUXT_NETLIFY_TOKEN` | | Error and summary of failed Netlify deploys |
+| `NUXT_CLOUDFLARE_TOKEN`, `NUXT_CLOUDFLARE_ACCOUNT_ID` | | Build log of failed Cloudflare Pages deployments. Token with Pages read |
 | `NUXT_OLLAMA_URL`, `NUXT_OLLAMA_MODEL` | | Local LLM for the report |
 | `NUXT_AUTOMATION_TOKEN` | | Enables `/api/automation/*`, 32 characters minimum |
 | `NUXT_PUBLIC_URL` | | Interface address, for links in notifications |

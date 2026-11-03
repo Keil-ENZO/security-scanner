@@ -21,6 +21,9 @@ export default defineNuxtConfig({
     vercelToken: '',
     // Optional: Netlify deploy error when a deployment fails. Read only
     netlifyToken: '',
+    // Optional: Cloudflare Pages build log, with a Pages read token. Read only
+    cloudflareToken: '',
+    cloudflareAccountId: '',
     // Optional: report written by a local LLM. Empty: plain text report
     ollamaUrl: '',
     ollamaModel: 'qwen3:8b',

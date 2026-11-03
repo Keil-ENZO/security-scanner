@@ -1,3 +1,4 @@
+import { cloudflareProvider } from './deploy-cloudflare'
 import { genericProvider } from './deploy-generic'
 import { netlifyProvider } from './deploy-netlify'
 import { type CheckItem, type Checks, fetchJson } from './github'
@@ -61,6 +62,7 @@ const vercel = {
 export const providers = {
   vercel,
   netlify: netlifyProvider,
+  cloudflare: cloudflareProvider,
   generic: genericProvider,
 } satisfies Record<string, DeployProvider>
 
