@@ -19,6 +19,9 @@ export default defineNuxtConfig({
     gitAuthorEmail: 'security-scanner@users.noreply.github.com',
     // Optional: Vercel build log when a deployment fails. Read only
     vercelToken: '',
+    // Optional: Cloudflare Pages build log, with a Pages read token. Read only
+    cloudflareToken: '',
+    cloudflareAccountId: '',
     // Optional: report written by a local LLM. Empty: plain text report
     ollamaUrl: '',
     ollamaModel: 'qwen3:8b',
