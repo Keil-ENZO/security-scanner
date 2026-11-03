@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { applyBumps, detectManager, type Manager, managerCommands, managerFiles, type Read, settleClassic, unsafeConfig } from './managers'
 import { type DeployProvider, deployProvider } from './providers'
 import { type Bump, fixedBy, planBumps } from './versions'
@@ -44,10 +44,19 @@ function writeManifests(dir: string, m: Manager, bumps: Bump[]) {
   return next
 }
 
-// Adds the missing headers in the config file of the provider. Returns the ones added
-function applyHeaders(dir: string, provider: DeployProvider, missing: string[]) {
+// Adds the missing headers in the config file of the provider. Returns the ones added.
+// A provider without a known file gets nothing written: the headers go to the manual list
+function applyHeaders(dir: string, provider: DeployProvider, missing: string[], manual: string[]) {
+  if (!provider.headersFile || !provider.writeHeaders) {
+    manual.push(`Headers ${missing.join(', ')}: ${provider.label} has no known config file, set them on the host`)
+    return []
+  }
   const edit = provider.writeHeaders(readFile(dir)(provider.headersFile), Object.fromEntries(missing.map(h => [h, SAFE_HEADERS[h]!])))
-  if (edit.added.length) writeFileSync(join(dir, provider.headersFile), edit.content)
+  if (edit.added.length) {
+    // public/_headers for Cloudflare: the folder may not exist yet
+    mkdirSync(dirname(join(dir, provider.headersFile)), { recursive: true })
+    writeFileSync(join(dir, provider.headersFile), edit.content)
+  }
   return edit.added
 }
 
@@ -173,8 +182,8 @@ async function runFix(fixId: number) {
     const missing = findings.map(f => f.title.slice(HEADER_FINDING.length).trim().toLowerCase())
     const safe = missing.filter(h => SAFE_HEADERS[h])
     for (const h of missing.filter(h => !SAFE_HEADERS[h])) manual.push(`Header ${h}: set it by hand, it can break the app`)
-    const added = safe.length ? applyHeaders(src, provider, safe) : []
-    if (added.length) {
+    const added = safe.length ? applyHeaders(src, provider, safe, manual) : []
+    if (added.length && provider.headersFile) {
       done.push(`Headers added to ${provider.headersFile}: ${added.join(', ')}`)
       await git(src, ['add', '--', provider.headersFile])
       await git(src, [...commitIdentity(), 'commit', '-q', '-m', `fix(headers): security headers\n\n${added.map(h => `- ${h}`).join('\n')}`])

@@ -1,3 +1,6 @@
+import { cloudflareProvider } from './deploy-cloudflare'
+import { genericProvider } from './deploy-generic'
+import { netlifyProvider } from './deploy-netlify'
 import { type CheckItem, type Checks, fetchJson } from './github'
 
 // Where a target deploys. A provider finds the deployment of a commit among its GitHub checks,
@@ -12,13 +15,13 @@ export interface DeployProvider {
   deployment: (repo: string, sha: string, checks: Checks) => Promise<Deployment | null>
   // Tail of the build log, null without a token. Read only
   logs: (d: Deployment) => Promise<string | null>
-  // Config file holding the headers, at the root of the repository
-  headersFile: string
+  // Config file holding the headers, at the root of the repository. null: no known file, headers stay manual
+  headersFile: string | null
   // Adds the missing headers to the file content, undefined when the file does not exist. No I/O
-  writeHeaders: (content: string | undefined, headers: Record<string, string>) => { content: string, added: string[] }
+  writeHeaders?: (content: string | undefined, headers: Record<string, string>) => { content: string, added: string[] }
 }
 
-const vercel: DeployProvider = {
+const vercel = {
   label: 'Vercel',
   headersFile: 'vercel.json',
 
@@ -54,9 +57,14 @@ const vercel: DeployProvider = {
     for (const key of added) rule.headers.push({ key, value: headers[key]! })
     return { content: `${JSON.stringify(config, null, 2)}\n`, added }
   },
-}
+} satisfies DeployProvider
 
-export const providers = { vercel } satisfies Record<string, DeployProvider>
+export const providers = {
+  vercel,
+  netlify: netlifyProvider,
+  cloudflare: cloudflareProvider,
+  generic: genericProvider,
+} satisfies Record<string, DeployProvider>
 
 // Vercel until targets store their provider
 export function deployProvider(): DeployProvider {
