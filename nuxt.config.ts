@@ -19,6 +19,8 @@ export default defineNuxtConfig({
     gitAuthorEmail: 'security-scanner@users.noreply.github.com',
     // Optional: Vercel build log when a deployment fails. Read only
     vercelToken: '',
+    // Optional: Netlify deploy error when a deployment fails. Read only
+    netlifyToken: '',
     // Optional: report written by a local LLM. Empty: plain text report
     ollamaUrl: '',
     ollamaModel: 'qwen3:8b',
