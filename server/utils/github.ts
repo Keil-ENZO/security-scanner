@@ -13,7 +13,7 @@ export function validRef(ref: string) {
 
 // $fetch without Nitro route typing, otherwise inference loops.
 // Read at call time: Nitro has not defined it yet when the module loads
-const fetchJson = <T>(url: string, opts: object) => ($fetch as unknown as (u: string, o: object) => Promise<T>)(url, opts)
+export const fetchJson = <T>(url: string, opts: object) => ($fetch as unknown as (u: string, o: object) => Promise<T>)(url, opts)
 
 export async function githubApi<T>(path: string, opts: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: object, query?: Record<string, string | number> } = {}): Promise<T> {
   const token = useRuntimeConfig().githubToken
@@ -47,6 +47,7 @@ export async function githubApi<T>(path: string, opts: { method?: 'GET' | 'POST'
 const PERMISSION_HINT: [RegExp, string][] = [
   [/^\/commits\/[^/]+\/status/, 'Commit statuses, read'],
   [/^\/commits\/[^/]+\/check-runs/, 'Checks, read'],
+  [/^\/deployments/, 'Deployments, read'],
   [/^\/pulls\/\d+\/merge/, 'Contents and Pull requests, write'],
   [/^\/pulls/, 'Pull requests, read and write'],
   [/^\/git\/refs/, 'Contents, write'],
@@ -79,8 +80,9 @@ export async function pullForBranch(t: TargetRepo, ref: string) {
   return pulls[0] ?? null
 }
 
-// Vercel preview and check status of a commit: failure > pending > success > none
-export interface Checks { state: string, preview: string | null, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
+// Check status of a commit: failure > pending > success > none
+export interface CheckItem { name: string, state: string, url: string | null, description: string | null }
+export interface Checks { state: string, warning: string | null, items: CheckItem[] }
 
 export async function checksFor(repo: string, sha: string): Promise<Checks> {
   let warning: string | null = null
@@ -102,14 +104,13 @@ export async function checksFor(repo: string, sha: string): Promise<Checks> {
     })),
   ]
   // Without statuses we cannot tell whether the preview is green: that blocks the merge
-  if (warning) return { state: 'unavailable', preview: null, items, warning }
+  if (warning) return { state: 'unavailable', items, warning }
   const state = items.some(i => i.state === 'failure')
     ? 'failure'
     : items.some(i => i.state === 'pending')
       ? 'pending'
       : items.length ? 'success' : 'none'
-  const preview = status.statuses.find(s => /vercel/i.test(s.context) && s.state === 'success')?.target_url ?? null
-  return { state, preview, items, warning: null }
+  return { state, items, warning: null }
 }
 
 // Latest finished scan of a branch, NULL for the default branch
@@ -139,38 +140,4 @@ export async function updateBranch(repo: string, ref: string, base: string) {
     if (/conflict/i.test(err?.message ?? '')) return { conflict: true, sha: null }
     throw err
   }
-}
-
-// Production deployment: the Vercel status of the latest commit on the default branch
-export async function productionDeploy(repo: string) {
-  const base = await defaultBranch(repo)
-  const head = await githubApi<{ sha: string, commit: { message: string, author: { date: string } } }>(`/repos/${repo}/commits/${encodeURIComponent(base)}`)
-  const checks = await checksFor(repo, head.sha)
-  const vercel = checks.items.find(i => /vercel/i.test(i.name)) ?? null
-  const logs = vercel?.state === 'failure' ? await vercelLogs(vercel.description, vercel.url).catch(() => null) : null
-  return {
-    base,
-    sha: head.sha,
-    message: head.commit.message.split('\n')[0],
-    date: head.commit.author.date,
-    state: vercel?.state ?? checks.state,
-    url: vercel?.url ?? null,
-    description: vercel?.description ?? null,
-    logs,
-  }
-}
-
-// Tail of the Vercel build log, when NUXT_VERCEL_TOKEN is set. Read only
-export async function vercelLogs(description: string | null, url: string | null) {
-  const token = useRuntimeConfig().vercelToken
-  if (!token) return null
-  // "npx vercel inspect dpl_…" in the description, else the last URL segment
-  const fromUrl = url?.match(/\/([A-Za-z0-9]{20,})$/)?.[1]
-  const id = description?.match(/dpl_[A-Za-z0-9]+/)?.[0] ?? (fromUrl ? `dpl_${fromUrl}` : null)
-  if (!id) return null
-  const events = await fetchJson<{ type: string, text?: string }[]>(`https://api.vercel.com/v3/deployments/${id}/events`, {
-    query: { builds: 1, direction: 'backward', limit: 80 },
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return events.filter(e => e.text && ['stdout', 'stderr', 'command'].includes(e.type)).map(e => e.text!).reverse().join('\n')
 }
