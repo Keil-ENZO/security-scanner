@@ -81,6 +81,8 @@ export function useDb() {
   addColumn('scans', 'sha', 'TEXT')
   addColumn('fixes', 'branch', 'TEXT')
   addColumn('fixes', 'pr_body', 'TEXT')
+  // Where the target deploys. Targets created before 0.6 were all on Vercel
+  addColumn('targets', 'provider', `TEXT NOT NULL DEFAULT 'vercel'`)
   // 0.5: English values and a scheduler-agnostic name
   const targetColumns = db.prepare('PRAGMA table_info(targets)').all() as { name: string }[]
   if (targetColumns.some(c => c.name === 'weekly')) db.exec('ALTER TABLE targets RENAME COLUMN weekly TO scheduled')

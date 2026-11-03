@@ -1,6 +1,7 @@
 // Production deployment: the latest commit on the default branch, as its provider deployed it
-export async function productionDeploy(repo: string) {
-  const provider = deployProvider()
+export async function productionDeploy(t: TargetRepo) {
+  const { repo } = t
+  const provider = deployProvider(t.provider)
   const base = await defaultBranch(repo)
   const head = await githubApi<{ sha: string, commit: { message: string, author: { date: string } } }>(`/repos/${repo}/commits/${encodeURIComponent(base)}`)
   const checks = await checksFor(repo, head.sha)
@@ -21,7 +22,7 @@ export async function productionDeploy(repo: string) {
 // After a merge, follow the deployment of the commit and send a notification.
 // Outside the queue: a few GitHub calls every 20 s, for 20 min at most
 export function watchDeploy(t: TargetRepo, sha: string, ref: string) {
-  const provider = deployProvider()
+  const provider = deployProvider(t.provider)
   const until = Date.now() + 20 * 60_000
   const link = `${useRuntimeConfig().publicUrl}/targets/${t.id}`
   const tick = async () => {

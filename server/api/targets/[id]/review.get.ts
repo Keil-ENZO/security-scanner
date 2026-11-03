@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     checksFor(t.repo, headSha),
     pr ? pullMergeState(t.repo, pr.number).catch(() => null) : null,
   ])
-  const provider = deployProvider()
+  const provider = deployProvider(t.provider)
   const deployment = await provider.deployment(t.repo, headSha, checks).catch(() => null)
   // Red preview: the reason is in the build log, not on GitHub
   const previewLogs = deployment?.state === 'failure' ? await provider.logs(deployment).catch(() => null) : null

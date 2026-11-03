@@ -6,6 +6,7 @@ const Body = z.object({
   url: z.string().trim().max(500).optional(),
   authHeader: z.string().trim().max(8300).optional(),
   scheduled: z.boolean().default(true),
+  provider: z.string().refine(isProviderId, 'Unknown deployment provider').default('vercel'),
 })
 
 export default defineEventHandler(async (event) => {
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const { lastInsertRowid } = useDb()
-    .prepare('INSERT INTO targets (name, repo, url, auth_header, scheduled) VALUES (?, ?, ?, ?, ?)')
-    .run(body.name, repo, url, auth, body.scheduled ? 1 : 0)
+    .prepare('INSERT INTO targets (name, repo, url, auth_header, scheduled, provider) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(body.name, repo, url, auth, body.scheduled ? 1 : 0, body.provider)
   return { id: Number(lastInsertRowid) }
 })

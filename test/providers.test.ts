@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { providers } from '../server/utils/providers'
+import { deployProvider, isProviderId, providers } from '../server/utils/providers'
 import type { Checks } from '../server/utils/github'
 
 const headers = { 'x-content-type-options': 'nosniff', 'x-frame-options': 'SAMEORIGIN' }
@@ -52,5 +52,21 @@ describe('vercel.deployment', () => {
 
   it('returns null when Vercel did not report', async () => {
     expect(await providers.vercel.deployment('o/r', 'sha', checks([['ci / test', 'success']]))).toBeNull()
+  })
+})
+
+describe('deployProvider', () => {
+  it('returns the provider stored on the target', () => {
+    expect(deployProvider('netlify')).toBe(providers.netlify)
+    expect(deployProvider('cloudflare')).toBe(providers.cloudflare)
+    expect(deployProvider('generic')).toBe(providers.generic)
+  })
+
+  it('falls back to Vercel on a missing or unknown value', () => {
+    expect(deployProvider(null)).toBe(providers.vercel)
+    expect(deployProvider('heroku')).toBe(providers.vercel)
+    // Inherited keys are not providers
+    expect(isProviderId('toString')).toBe(false)
+    expect(deployProvider('__proto__')).toBe(providers.vercel)
   })
 })

@@ -55,14 +55,14 @@ const PERMISSION_HINT: [RegExp, string][] = [
   [/^\/(compare|branches)/, 'Contents, read'],
 ]
 
-export interface TargetRepo { id: number, name: string, repo: string, owner: string }
+export interface TargetRepo { id: number, name: string, repo: string, owner: string, provider: string }
 
 export function targetRepo(id: number): TargetRepo {
-  const t = useDb().prepare('SELECT id, name, repo FROM targets WHERE id = ?').get(id) as { id: number, name: string, repo: string | null } | undefined
+  const t = useDb().prepare('SELECT id, name, repo, provider FROM targets WHERE id = ?').get(id) as { id: number, name: string, repo: string | null, provider: string } | undefined
   if (!t) throw createError({ statusCode: 404, message: 'Unknown target' })
   if (!t.repo) throw createError({ statusCode: 400, message: 'This target has no repository' })
   const repo = parseRepo(`https://github.com/${t.repo}`)
-  return { id: t.id, name: t.name, repo, owner: repo.split('/')[0]! }
+  return { id: t.id, name: t.name, repo, owner: repo.split('/')[0]!, provider: t.provider }
 }
 
 export async function defaultBranch(repo: string) {
