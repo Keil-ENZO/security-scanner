@@ -10,7 +10,9 @@ RUN pnpm build
 
 FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
 
-# upgrade: Debian security fixes for the base packages, even when the base digest lags
+# upgrade: Debian security fixes for the base packages, even when the base digest lags.
+# APT_REFRESH: the build day, set by CI. Otherwise the layer cache keeps an old upgrade forever
+ARG APT_REFRESH
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends ca-certificates curl git unzip \
