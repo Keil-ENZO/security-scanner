@@ -66,7 +66,13 @@ export const providers = {
   generic: genericProvider,
 } satisfies Record<string, DeployProvider>
 
-// Vercel until targets store their provider
-export function deployProvider(): DeployProvider {
-  return providers.vercel
+export type ProviderId = keyof typeof providers
+
+export function isProviderId(id: string): id is ProviderId {
+  return Object.hasOwn(providers, id)
+}
+
+// Provider of a target. An unknown value falls back to Vercel, the default before providers existed
+export function deployProvider(id: string | null | undefined): DeployProvider {
+  return id && isProviderId(id) ? providers[id] : providers.vercel
 }

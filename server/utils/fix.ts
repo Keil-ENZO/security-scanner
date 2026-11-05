@@ -124,9 +124,9 @@ export function enqueueFix(scanId: number) {
 async function runFix(fixId: number) {
   const db = useDb()
   const row = db.prepare(`
-    SELECT f.scan_id, t.id AS target_id, t.name, t.repo FROM fixes f
+    SELECT f.scan_id, t.id AS target_id, t.name, t.repo, t.provider FROM fixes f
     JOIN scans s ON s.id = f.scan_id JOIN targets t ON t.id = s.target_id WHERE f.id = ?
-  `).get(fixId) as { scan_id: number, target_id: number, name: string, repo: string } | undefined
+  `).get(fixId) as { scan_id: number, target_id: number, name: string, repo: string, provider: string } | undefined
   if (!row) return
   db.prepare(`UPDATE fixes SET status = 'running' WHERE id = ?`).run(fixId)
   const work = join(useRuntimeConfig().dataDir, 'work', `fix-${fixId}`)
@@ -176,7 +176,7 @@ async function runFix(fixId: number) {
     }
 
     // 2. HTTP headers, in the config file of the provider
-    const provider = deployProvider()
+    const provider = deployProvider(row.provider)
     const findings = db.prepare(`SELECT title FROM findings WHERE scan_id = ? AND tool = 'nuclei' AND title LIKE ?`)
       .all(row.scan_id, `${HEADER_FINDING}%`) as { title: string }[]
     const missing = findings.map(f => f.title.slice(HEADER_FINDING.length).trim().toLowerCase())
