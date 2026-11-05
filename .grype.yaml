@@ -1,13 +1,15 @@
 # Accepted risks for the release gate. Read by Grype in .github/workflows/release.yml.
 #
 # Policy: only vulnerabilities inside third-party tools of the image, already on their latest
-# release, fixed upstream in Go or a library but not shipped by the tool yet.
+# release, fixed upstream in Go or a library but not shipped by the tool yet. A release inside the
+# 7 day cooldown of scripts/update-tools.mjs does not count as latest: a fresh one can be hijacked.
 # Each rule names one CVE in one binary: a new CVE in the same binary still fails the gate.
 # On every bump of scripts/tools.env, delete the rules of the bumped tool, then rerun the gate.
 # scripts/update-tools.mjs does the deletion for the weekly bumps.
 # Our own code and dependencies never get an exception here.
 #
 # Reviewed 2026-11-01, for the versions noted on each block. Every rule still matches the 0.5.2 image.
+# CVE-2026-78661 added 2026-11-05: x/net/html parser, quadratic time on crafted HTML, no code execution.
 ignore:
 
   # grype 0.121.0: built with a Go toolchain and modules older than the fixes
@@ -57,6 +59,10 @@ ignore:
       location: "/usr/local/bin/grype"
   - vulnerability: CVE-2026-116587
     reason: grype 0.121.0 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/grype"
+  - vulnerability: CVE-2026-78661
+    reason: x/net 0.61.0 in grype 0.121.0, the latest release 0.121.1 still ships it
     package:
       location: "/usr/local/bin/grype"
 
@@ -189,6 +195,10 @@ ignore:
     reason: nuclei 3.11.1 is the latest release, the fix is not shipped upstream yet
     package:
       location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-78661
+    reason: x/net 0.56.0 in nuclei 3.11.1, the latest release, no release ships 0.62.0 yet
+    package:
+      location: "/usr/local/bin/nuclei"
 
   # syft 1.55.0: built with a Go toolchain and modules older than the fixes
   - vulnerability: CVE-2026-56857
@@ -239,10 +249,18 @@ ignore:
     reason: syft 1.55.0 is the latest release, the fix is not shipped upstream yet
     package:
       location: "/usr/local/bin/syft"
+  - vulnerability: CVE-2026-78661
+    reason: x/net 0.61.0 in syft 1.55.0, the latest release 1.56.0 still ships it
+    package:
+      location: "/usr/local/bin/syft"
 
   # trivy 0.76.1: built with Go modules older than the fixes
   - vulnerability: CVE-2026-116587
     reason: trivy 0.76.1 is the latest release, the fix is not shipped upstream yet
+    package:
+      location: "/usr/local/bin/trivy"
+  - vulnerability: CVE-2026-78661
+    reason: x/net 0.60.0 in trivy 0.76.1, 0.76.2 ships the fix but is inside the 7 day cooldown
     package:
       location: "/usr/local/bin/trivy"
 
