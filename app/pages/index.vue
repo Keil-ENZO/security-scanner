@@ -1,11 +1,18 @@
 <script setup lang="ts">
-interface Target { id: number, name: string, repo: string | null, url: string | null, scheduled: number, has_auth: number, last_scan_id: number | null }
+interface Target { id: number, name: string, repo: string | null, url: string | null, scheduled: number, provider: string, has_auth: number, last_scan_id: number | null }
 interface ScanRow { id: number, target: string, ref: string | null, origin: string, status: string, created_at: string, critical: number, high: number, medium: number, low: number, total: number }
 
 const { data: targets, refresh: refreshTargets } = await useFetch<Target[]>('/api/targets')
 const { data: scans, refresh: refreshScans } = await useFetch<ScanRow[]>('/api/scans')
 
-const form = reactive({ name: '', repo: '', url: '', authHeader: '', scheduled: true })
+// Same ids as the server providers
+const providers = [
+  { id: 'vercel', label: 'Vercel' },
+  { id: 'netlify', label: 'Netlify' },
+  { id: 'cloudflare', label: 'Cloudflare Pages' },
+  { id: 'generic', label: 'GitHub Deployments' },
+]
+const form = reactive({ name: '', repo: '', url: '', authHeader: '', scheduled: true, provider: 'vercel' })
 const error = ref('')
 const showForm = ref(false)
 
@@ -20,9 +27,10 @@ async function addTarget() {
         url: form.url || undefined,
         authHeader: form.authHeader || undefined,
         scheduled: form.scheduled,
+        provider: form.provider,
       },
     })
-    Object.assign(form, { name: '', repo: '', url: '', authHeader: '', scheduled: true })
+    Object.assign(form, { name: '', repo: '', url: '', authHeader: '', scheduled: true, provider: 'vercel' })
     showForm.value = false
     await refreshTargets()
   }
@@ -105,6 +113,15 @@ onUnmounted(() => clearInterval(timer))
         v-model="form.url"
         placeholder="https://my-app.example.com"
       ></label>
+      <label>Deployment<select v-model="form.provider">
+        <option
+          v-for="p in providers"
+          :key="p.id"
+          :value="p.id"
+        >
+          {{ p.label }}
+        </option>
+      </select></label>
       <label>Test credentials<input
         v-model="form.authHeader"
         type="password"
@@ -147,6 +164,10 @@ onUnmounted(() => clearInterval(timer))
             class="target-link"
           ><strong>{{ t.name }}</strong></NuxtLink>
           <div class="tags">
+            <span
+              v-if="t.repo"
+              class="tag"
+            >{{ providers.find(p => p.id === t.provider)?.label ?? t.provider }}</span>
             <span
               v-if="t.scheduled"
               class="tag"

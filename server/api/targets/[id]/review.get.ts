@@ -22,9 +22,10 @@ export default defineEventHandler(async (event) => {
     checksFor(t.repo, headSha),
     pr ? pullMergeState(t.repo, pr.number).catch(() => null) : null,
   ])
+  const provider = deployProvider(t.provider)
+  const deployment = await provider.deployment(t.repo, headSha, checks).catch(() => null)
   // Red preview: the reason is in the build log, not on GitHub
-  const vercel = checks.items.find(i => /vercel/i.test(i.name) && i.state === 'failure')
-  const previewLogs = vercel ? await vercelLogs(vercel.description, vercel.url).catch(() => null) : null
+  const previewLogs = deployment?.state === 'failure' ? await provider.logs(deployment).catch(() => null) : null
 
   // Code findings comparison: the site is only scanned in production
   const db = useDb()
@@ -58,6 +59,7 @@ export default defineEventHandler(async (event) => {
     commits: compare.commits.map(c => ({ sha: c.sha, message: c.commit.message, author: c.commit.author.name, date: c.commit.author.date })),
     files: compare.files.map(f => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions, patch: f.patch ?? null })),
     checks,
+    preview: deployment?.state === 'success' ? deployment.url : null,
     previewLogs,
     // false: conflicts with the base. null: GitHub is still computing
     conflicts: merge?.mergeable === false || merge?.state === 'dirty',

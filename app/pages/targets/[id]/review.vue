@@ -9,7 +9,8 @@ interface Review {
   behindBy: number
   commits: { sha: string, message: string, author: string, date: string }[]
   files: { filename: string, status: string, additions: number, deletions: number, patch: string | null }[]
-  checks: { state: string, preview: string | null, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
+  checks: { state: string, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
+  preview: string | null
   previewLogs: string | null
   conflicts: boolean
   pr: { number: number, url: string, draft: boolean } | null
@@ -149,8 +150,8 @@ onUnmounted(() => clearInterval(timer))
         <span class="label">02 · Preview</span>
         <strong>{{ ({ success: 'Green', failure: 'Failing', pending: 'Pending', none: 'No checks', unavailable: 'Unreadable' } as Record<string, string>)[data.checks.state] }}</strong>
         <a
-          v-if="data.checks.preview"
-          :href="data.checks.preview"
+          v-if="data.preview"
+          :href="data.preview"
           target="_blank"
           rel="noopener noreferrer"
           class="mono small-link"
