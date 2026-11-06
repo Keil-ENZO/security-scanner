@@ -7,7 +7,7 @@ export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const
 export type Severity = typeof SEVERITIES[number]
 
 export interface Finding {
-  tool: 'trivy' | 'grype' | 'semgrep' | 'nuclei'
+  tool: 'trivy' | 'trufflehog' | 'grype' | 'semgrep' | 'nuclei'
   severity: Severity
   title: string
   ruleId?: string
@@ -33,11 +33,65 @@ function clip(value: unknown, max = 2000) {
   return typeof value === 'string' && value ? value.slice(0, max) : undefined
 }
 
+function jsonLines(text: string) {
+  const records: any[] = []
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      records.push(JSON.parse(line))
+    }
+    catch {
+      continue
+    }
+  }
+  return records
+}
+
+const CONFIG_FILES = String.raw`(?i)(^|/)((docker-)?compose[^/]*\.ya?ml|\.env(\.[^/]*)?|[^/]*\.env)$`
+
+// The built-in rules only know token formats: a plain password in a compose file goes through.
+// The rules below read compose and env files, where a literal value next to such a key is a credential.
+// The built-in exceptions would hide test, example and Markdown files
+export const TRIVY_SECRET_CONFIG = String.raw`
+disable-allow-rules: [tests, examples, markdown]
+rules:
+  - id: config-credential
+    category: Config
+    title: Hardcoded credential in a compose or env file
+    severity: HIGH
+    path: '${CONFIG_FILES}'
+    keywords: [pass, pwd, secret, token, key]
+    regex: '(?im)^[\s-]*["'']?[a-z0-9_.]*(password|passwd|pwd|secret|token|api_?key|secret_?key|private_?key|access_?key)["'']?\s*[:=]\s*["'']?(?P<secret>[^\s"''#$][^\s"''#]{2,})'
+    secret-group-name: secret
+    allow-rules:
+      - id: placeholder
+        description: Placeholder value
+        regex: '(?i)[:=]\s*["'']?(change[-_]?me|changeit|example|sample|placeholder|password|secret|token|your[-_][^\s"'']*|x{3,}|\*+|<[^\s]*>|\{\{[^\s]*|true|false|null|none)["'']?\s*$'
+  - id: config-url-credential
+    category: Config
+    title: Credentials in a URL, in a compose or env file
+    severity: HIGH
+    path: '${CONFIG_FILES}'
+    keywords: ['://']
+    regex: '(?i)\b[a-z][a-z0-9+.-]*://[^\s:/@"'']*:(?P<secret>[^\s:/@"''$]{3,})@'
+    secret-group-name: secret
+  - id: config-command-password
+    category: Config
+    title: Password on a command line, in a compose file
+    severity: HIGH
+    path: '${CONFIG_FILES}'
+    keywords: ['--requirepass', '--masterauth', '--password']
+    regex: '(?i)--(requirepass|masterauth|password)[=\s]+["'']?(?P<secret>[^\s"''$]{3,})'
+    secret-group-name: secret
+`
+
 // Secrets and misconfigurations of the repository. Vulnerabilities come from Grype
-export async function trivy(dir: string): Promise<Finding[]> {
+export async function trivy(dir: string, workDir: string): Promise<Finding[]> {
+  const config = join(workDir, 'trivy-secret.yaml')
+  writeFileSync(config, TRIVY_SECRET_CONFIG, { mode: 0o600 })
   const result = await run(
     'trivy',
-    ['fs', '--quiet', '--format', 'json', '--scanners', 'secret,misconfig', '--skip-dirs', '.git', dir],
+    ['fs', '--quiet', '--format', 'json', '--scanners', 'secret,misconfig', '--secret-config', config, '--skip-dirs', '.git', dir],
     { timeoutMs: 15 * 60_000 },
   )
   if (result.code !== 0) throw new Error(result.stderr.trim().slice(-500))
@@ -69,6 +123,47 @@ export function parseTrivy(json: any): Finding[] {
         remediation: clip(m.Resolution),
       })
     }
+  }
+  return findings
+}
+
+// Secrets of the whole Git history. No verification: a candidate never leaves the machine
+export async function trufflehog(dir: string): Promise<Finding[]> {
+  const result = await run(
+    'trufflehog',
+    ['git', `file://${dir}`, '--no-verification', '--no-update', '--no-ignore-tag', '--json'],
+    { timeoutMs: 20 * 60_000 },
+  )
+  if (result.code !== 0) throw new Error(result.stderr.trim().slice(-500))
+  const records = jsonLines(result.stdout)
+  // Tells a secret still in the code from one only left in the history
+  const head = new Map<string, string>()
+  for (const r of records) {
+    const file = String(r.SourceMetadata?.Data?.Git?.file ?? '')
+    if (file && !head.has(file)) head.set(file, await git(dir, ['show', `HEAD:${file}`]).catch(() => ''))
+  }
+  return parseTrufflehog(records, head)
+}
+
+export function parseTrufflehog(records: any[], head: Map<string, string>): Finding[] {
+  const seen = new Set<string>()
+  const findings: Finding[] = []
+  for (const r of records) {
+    const g = r.SourceMetadata?.Data?.Git ?? {}
+    const id = `${r.DetectorName}|${g.file}|${r.Raw}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    // Same rule as Trivy: the secret itself is never stored
+    const current = !!r.Raw && !!head.get(g.file)?.includes(r.Raw)
+    findings.push({
+      tool: 'trufflehog',
+      severity: 'high',
+      title: `${current ? 'Secret' : 'Secret in Git history'}: ${r.DetectorName} in ${g.file}`,
+      ruleId: r.DetectorName,
+      location: `${g.file}:${g.line}`,
+      description: g.commit ? `Committed in ${String(g.commit).slice(0, 12)}` : undefined,
+      remediation: 'Revoke the secret, then remove it from the Git history',
+    })
   }
   return findings
 }
@@ -195,15 +290,7 @@ export async function nuclei(url: string, authHeader: string | null, workDir: st
 
 export function parseNuclei(jsonl: string): Finding[] {
   const findings: Finding[] = []
-  for (const line of jsonl.split('\n')) {
-    if (!line.trim()) continue
-    let r: any
-    try {
-      r = JSON.parse(line)
-    }
-    catch {
-      continue
-    }
+  for (const r of jsonLines(jsonl)) {
     const c = r.info?.classification ?? {}
     // One template can emit several lines: the matcher or the extracted value tells them apart
     const detail = r['matcher-name'] ?? joinList(r['extracted-results'])

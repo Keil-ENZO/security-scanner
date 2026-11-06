@@ -21,7 +21,7 @@ RUN apt-get update \
 # Official binaries: checksums verified, and signatures checked by cosign when published.
 # Versions live in scripts/tools.env
 COPY scripts/tools.env scripts/install-tool.sh /tmp/tools/
-RUN /tmp/tools/install-tool.sh /usr/local/bin nuclei trivy syft grype
+RUN /tmp/tools/install-tool.sh /usr/local/bin nuclei trivy trufflehog syft grype
 # The npm bundled with Node lags on its own dependency fixes. npm regenerates lockfiles for fixes
 RUN . /tmp/tools/tools.env && npm install -g --ignore-scripts "npm@${NPM_VERSION}" && npm --version
 # corepack fetches pnpm and Yarn for fixes and checks their npm signatures. Pinned: Node 25 no longer bundles it
@@ -38,7 +38,7 @@ WORKDIR /app
 COPY --from=build /app/.output ./.output
 
 LABEL org.opencontainers.image.title="security-scanner" \
-      org.opencontainers.image.description="Self-hosted security audits: Trivy, Grype, Syft, Semgrep, Nuclei, local LLM report" \
+      org.opencontainers.image.description="Self-hosted security audits: Trivy, TruffleHog, Grype, Syft, Semgrep, Nuclei, local LLM report" \
       org.opencontainers.image.source="https://github.com/Keil-ENZO/security-scanner"
 
 # Database, caches and Nuclei templates live in the /data volume.

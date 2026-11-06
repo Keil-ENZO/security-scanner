@@ -60,12 +60,13 @@ async function runScan(scanId: number) {
       const repo = parseRepo(`https://github.com/${target.repo}`)
       const src = join(work, 'src')
       await step('git', async () => {
-        await cloneRepo(repo, src, target.ref)
+        await cloneRepo(repo, src, target.ref, true)
         db.prepare('UPDATE scans SET sha = ? WHERE id = ?').run(await git(src, ['rev-parse', 'HEAD']), scanId)
         return []
       })
       if (!errors.length) {
-        await step('trivy', () => trivy(src))
+        await step('trivy', () => trivy(src, work))
+        await step('trufflehog', () => trufflehog(src))
         // Grype reads the SBOM: no SBOM, no Grype
         sbom = await syft(src, work).catch((err) => {
           errors.push(`syft: ${message(err)}`)
