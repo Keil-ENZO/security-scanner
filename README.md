@@ -17,7 +17,8 @@ Code and findings never leave your machine.
 |---|---|
 | SBOM, CycloneDX, downloadable per scan | Syft |
 | Vulnerable dependencies, read from the SBOM | Grype |
-| Secrets, Dockerfile and IaC misconfigurations | Trivy |
+| Secrets, Dockerfile and IaC misconfigurations | Trivy, plus rules for plain credentials in compose and env files |
+| Secrets in the Git history of the scanned branch | TruffleHog, candidates never verified online |
 | Code, static analysis | Semgrep, `p/default` rules |
 | Live site | Nuclei, no intrusive or DoS templates, 30 requests/s |
 | Report | Ollama, local. Optional: without it the report is plain text |
@@ -38,9 +39,9 @@ Only scan targets you own, or that you have written permission to test.
 
 ## Quick start
 
-Requirements: Node 24, pnpm, and `trivy`, `syft`, `grype`, `semgrep`, `nuclei` in the `PATH`. Ollama is optional.
+Requirements: Node 24, pnpm, and `trivy`, `trufflehog`, `syft`, `grype`, `semgrep`, `nuclei` in the `PATH`. Ollama is optional.
 
-`scripts/install-tool.sh ~/.local/bin trivy syft grype nuclei` installs the pinned versions with the same checks as the image.
+`scripts/install-tool.sh ~/.local/bin trivy trufflehog syft grype nuclei` installs the pinned versions with the same checks as the image.
 
 ```bash
 pnpm install
@@ -191,7 +192,7 @@ pnpm build
 - **The scanner scans itself.** Syft with Grype, Trivy for secrets and misconfigurations, and Semgrep on every push, plus CodeQL. Results go to the Security tab. Fixable high and critical issues fail the build. The source SBOM is kept as a build artifact.
 - **Dependency review** blocks PRs that add a high severity vulnerability.
 - **Pinned everything.** GitHub Actions by commit SHA, base images by digest. Dependabot keeps them current. Scanner versions live in `scripts/tools.env`. A weekly workflow opens a pull request for releases at least a week old, on the same major. It drops the `.grype.yaml` rules of the bumped tools, and the pinned cosign verifies a new cosign before its hash gets pinned.
-- **Verified downloads.** `scripts/install-tool.sh` trusts one pinned hash, the cosign binary. Cosign then verifies the signed checksums of Trivy, Syft and Grype before any archive is used.
+- **Verified downloads.** `scripts/install-tool.sh` trusts one pinned hash, the cosign binary. Cosign then verifies the signed checksums of Trivy, TruffleHog, Syft and Grype before any archive is used.
 - **Releases** on `v*` tags: image on GHCR, SBOM by Syft, Grype blocks fixable high and critical vulnerabilities, cosign signs the image and attests the SBOM. SLSA provenance on top.
 - **OpenSSF Scorecard** publishes the repository score weekly.
 

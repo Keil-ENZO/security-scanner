@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lockfileVulns, parseGrype, parseNuclei, parseSemgrep, parseTrivy } from '../server/utils/scanners'
+import { lockfileVulns, parseGrype, parseNuclei, parseSemgrep, parseTrivy, parseTrufflehog, TRIVY_SECRET_CONFIG } from '../server/utils/scanners'
 import { countBySeverity, formatCounts, verdictOf } from '../server/utils/report'
 
 describe('parseTrivy', () => {
@@ -24,6 +24,40 @@ describe('parseTrivy', () => {
 
   it('handles an empty report', () => {
     expect(parseTrivy({})).toEqual([])
+  })
+})
+
+describe('TRIVY_SECRET_CONFIG', () => {
+  it('keeps the regexes intact through the template string', () => {
+    expect(TRIVY_SECRET_CONFIG).toContain(String.raw`(?P<secret>[^\s"''#$][^\s"''#]{2,})`)
+    expect(TRIVY_SECRET_CONFIG).toContain(String.raw`path: '(?i)(^|/)((docker-)?compose[^/]*\.ya?ml`)
+  })
+})
+
+describe('parseTrufflehog', () => {
+  const record = (file: string, line: number, Raw: string, commit = '2bf35acf0123456789') => ({
+    DetectorName: 'Github',
+    Raw,
+    RawV2: Raw,
+    SourceMetadata: { Data: { Git: { file, line, commit } } },
+  })
+  const findings = parseTrufflehog([
+    record('compose.yml', 4, 'ghp_stillhere'),
+    record('old.env', 1, 'ghp_deleted'),
+    record('old.env', 1, 'ghp_deleted', 'ffffffffffff'),
+  ], new Map([['compose.yml', 'GITHUB_TOKEN=ghp_stillhere'], ['old.env', '']]))
+
+  it('never stores the secret value', () => {
+    expect(JSON.stringify(findings)).not.toContain('ghp_')
+  })
+
+  it('tells the code from the history', () => {
+    expect(findings[0]).toMatchObject({ tool: 'trufflehog', severity: 'high', title: 'Secret: Github in compose.yml', location: 'compose.yml:4' })
+    expect(findings[1]).toMatchObject({ title: 'Secret in Git history: Github in old.env', description: 'Committed in 2bf35acf0123' })
+  })
+
+  it('reports a secret once, however many commits hold it', () => {
+    expect(findings).toHaveLength(2)
   })
 })
 

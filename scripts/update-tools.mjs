@@ -20,6 +20,7 @@ export const COOLDOWN_DAYS = 7
 export const TOOLS = [
   { key: 'NUCLEI_VERSION', name: 'nuclei', github: 'projectdiscovery/nuclei', location: '/usr/local/bin/nuclei' },
   { key: 'TRIVY_VERSION', name: 'trivy', github: 'aquasecurity/trivy', location: '/usr/local/bin/trivy' },
+  { key: 'TRUFFLEHOG_VERSION', name: 'trufflehog', github: 'trufflesecurity/trufflehog', location: '/usr/local/bin/trufflehog' },
   { key: 'SYFT_VERSION', name: 'syft', github: 'anchore/syft', location: '/usr/local/bin/syft' },
   { key: 'GRYPE_VERSION', name: 'grype', github: 'anchore/grype', location: '/usr/local/bin/grype' },
   { key: 'COSIGN_VERSION', name: 'cosign', github: 'sigstore/cosign', location: '/usr/local/bin/cosign' },
