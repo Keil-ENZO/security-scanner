@@ -203,7 +203,7 @@ onUnmounted(() => clearInterval(timer))
             <option value="">
               All tools
             </option>
-            <option>trivy</option><option>grype</option><option>semgrep</option><option>nuclei</option>
+            <option>trivy</option><option>trufflehog</option><option>grype</option><option>semgrep</option><option>nuclei</option>
           </select>
           <select v-model="severity">
             <option value="">

@@ -32,14 +32,16 @@ export async function git(cwd: string, args: string[]) {
   return result.stdout.trim()
 }
 
-export async function cloneRepo(repo: string, dest: string, ref?: string | null) {
+// history: every commit of the branch, for the secrets. Otherwise only the latest one
+export async function cloneRepo(repo: string, dest: string, ref?: string | null, history = false) {
   const { githubToken } = useRuntimeConfig()
   const env = gitEnv()
   const branch = ref ? ['--branch', validRef(ref)] : []
+  const depth = history ? ['--single-branch', '--no-tags'] : ['--depth', '1']
   const result = await run(
     'git',
-    ['-c', 'protocol.file.allow=never', 'clone', '--depth', '1', '--quiet', ...branch, '--', `https://github.com/${repo}.git`, dest],
-    { env, timeoutMs: 5 * 60_000 },
+    ['-c', 'protocol.file.allow=never', 'clone', ...depth, '--quiet', ...branch, '--', `https://github.com/${repo}.git`, dest],
+    { env, timeoutMs: (history ? 15 : 5) * 60_000 },
   )
   if (result.code !== 0) {
     if (!githubToken && /could not read Username/.test(result.stderr)) {

@@ -12,7 +12,7 @@ Requirements: Node 24 and pnpm. The scanners are only needed to run real scans.
 pnpm install
 cp .env.example .env
 node scripts/hash-password.mjs
-scripts/install-tool.sh ~/.local/bin trivy syft grype nuclei
+scripts/install-tool.sh ~/.local/bin trivy trufflehog syft grype nuclei
 pnpm dev
 ```
 

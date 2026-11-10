@@ -1,6 +1,6 @@
 #!/bin/sh
 # Usage: scripts/install-tool.sh <dest-dir> <tool>...
-# Tools: nuclei trivy syft grype cosign. Official release binaries, linux amd64.
+# Tools: nuclei trivy trufflehog syft grype cosign. Official release binaries, linux amd64.
 # Every archive is checked against the release checksums. When the checksums file is signed,
 # cosign verifies its signature first, so a tampered release fails even with matching sums
 set -eu
@@ -25,13 +25,21 @@ ensure_cosign() {
   install -m 0755 cosign-linux-amd64 "$cosign"
 }
 
-# $1 GitHub repository, $2 release base URL, $3 checksums file, $4 signed or not
+# $1 GitHub repository, $2 release base URL, $3 checksums file, $4 signed, signed-cert or unsigned
 checked() {
   fetch "$2/$3"
   if [ "$4" = signed ]; then
     fetch "$2/$3.sigstore.json"
     ensure_cosign
     "$cosign" verify-blob --bundle "$3.sigstore.json" \
+      --certificate-identity-regexp "^https://github.com/$1/" \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com "$3"
+  fi
+  if [ "$4" = signed-cert ]; then
+    fetch "$2/$3.sig"
+    fetch "$2/$3.pem"
+    ensure_cosign
+    "$cosign" verify-blob --signature "$3.sig" --certificate "$3.pem" \
       --certificate-identity-regexp "^https://github.com/$1/" \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com "$3"
   fi
@@ -52,6 +60,12 @@ for tool in "$@"; do
       fetch "$base/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
       checked aquasecurity/trivy "$base" "trivy_${TRIVY_VERSION}_checksums.txt" signed
       tar xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy
+      ;;
+    trufflehog)
+      base="https://github.com/trufflesecurity/trufflehog/releases/download/v$TRUFFLEHOG_VERSION"
+      fetch "$base/trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz"
+      checked trufflesecurity/trufflehog "$base" "trufflehog_${TRUFFLEHOG_VERSION}_checksums.txt" signed-cert
+      tar xzf "trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz" trufflehog
       ;;
     syft | grype)
       [ "$tool" = syft ] && version=$SYFT_VERSION || version=$GRYPE_VERSION
