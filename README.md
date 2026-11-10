@@ -94,7 +94,7 @@ Everything goes through environment variables. `.env.example` lists them all.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `NUXT_SESSION_PASSWORD` | yes | Session encryption, 32 characters minimum |
+| `NUXT_APP_SECRET` | yes | Seals the session cookie, 32 characters minimum. Replaces `NUXT_SESSION_PASSWORD` |
 | `NUXT_PASSWORD_HASH` | yes | Interface password, from `scripts/hash-password.mjs` |
 | `NUXT_SECRET_KEY` | yes | 32 bytes in hex, encrypts test credentials |
 | `NUXT_ALLOWED_OWNERS` | yes | GitHub owners that may be cloned |
