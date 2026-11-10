@@ -10,6 +10,7 @@
 #
 # Reviewed 2026-11-01, for the versions noted on each block. Every rule still matches the 0.5.2 image.
 # CVE-2026-78661 added 2026-11-05: x/net/html parser, quadratic time on crafted HTML, no code execution.
+# CVE-2026-111497 (brotli) and CVE-2026-116591 (klauspost/compress) added 2026-11-10, for the bumped versions.
 ignore:
 
   # nuclei 3.11.1: built with a Go toolchain and modules older than the fixes
@@ -147,6 +148,15 @@ ignore:
     package:
       location: "/usr/local/bin/nuclei"
 
+  - vulnerability: CVE-2026-111497
+    reason: brotli 1.2.0 in nuclei 3.11.1, the latest release, no release ships 1.2.7 yet
+    package:
+      location: "/usr/local/bin/nuclei"
+  - vulnerability: CVE-2026-116591
+    reason: klauspost/compress 1.18.7 in nuclei 3.11.1, the latest release, no release ships 1.20.2 yet
+    package:
+      location: "/usr/local/bin/nuclei"
+
   # trivy 0.76.1: built with Go modules older than the fixes
   - vulnerability: CVE-2026-116587
     reason: trivy 0.76.1 is the latest release, the fix is not shipped upstream yet
@@ -157,6 +167,23 @@ ignore:
       day cooldown
     package:
       location: "/usr/local/bin/trivy"
+
+  - vulnerability: CVE-2026-116591
+    reason: klauspost/compress 1.20.1 in trivy 0.76.1, 0.76.2 still ships it
+    package:
+      location: "/usr/local/bin/trivy"
+
+  # syft 1.56.0: 1.57.0 ships the fixes but is inside the 7 day cooldown until 2026-11-12
+  - vulnerability: CVE-2026-111497
+    reason: brotli 1.2.0 in syft 1.56.0, 1.57.0 ships the fix but is inside the 7 day cooldown
+    package:
+      location: "/usr/local/bin/syft"
+
+  # grype 0.121.1: 0.121.2 ships the fixes but is inside the 7 day cooldown until 2026-11-12
+  - vulnerability: CVE-2026-111497
+    reason: brotli 1.2.0 in grype 0.121.1, 0.121.2 ships the fix but is inside the 7 day cooldown
+    package:
+      location: "/usr/local/bin/grype"
 
   # npm 11.21.1, the latest 11.x and 12.x both bundle undici 6.29.0. npm only regenerates lockfiles
   - vulnerability: CVE-2026-109869
