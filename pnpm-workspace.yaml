@@ -5,3 +5,6 @@ allowBuilds:
 overrides:
   # listhen, through nuxt, allows ^1.4.0. Drop once listhen requires 1.4.1 or later
   node-forge: ^1.4.1
+  # GHSA-3g3m-2fjr-6pw4, build-time only through nitropack. Fixed only in glob 14.
+  # Drop once archiver-utils and @vercel/nft require glob 14
+  "glob@<14.0.2": ^14.0.2
