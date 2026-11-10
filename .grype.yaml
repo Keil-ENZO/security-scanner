@@ -194,16 +194,16 @@ ignore:
     package:
       location: "/usr/local/bin/grype"
 
-  # npm 11.21.1, the latest 11.x and 12.x both bundle undici 6.29.0. npm only regenerates lockfiles
+  # npm 12.2.1 bundles undici 6.29.0, fixed in 12.2.2 from 2026-11-11. npm only regenerates lockfiles
   - vulnerability: CVE-2026-109869
-    reason: undici bundled in npm 11.21.1, no npm release ships undici 6.29.1 yet
+    reason: undici 6.29.0 in npm 12.2.1, 12.2.2 ships 6.29.1 but is inside the 7 day cooldown
     package:
       location: "/usr/local/lib/node_modules/npm/node_modules/undici/package.json"
   - vulnerability: CVE-2026-87018
-    reason: undici bundled in npm 11.21.1, no npm release ships undici 6.29.1 yet
+    reason: undici 6.29.0 in npm 12.2.1, 12.2.2 ships 6.29.1 but is inside the 7 day cooldown
     package:
       location: "/usr/local/lib/node_modules/npm/node_modules/undici/package.json"
   - vulnerability: CVE-2026-109383
-    reason: undici bundled in npm 11.21.1, no npm release ships undici 6.29.1 yet
+    reason: undici 6.29.0 in npm 12.2.1, 12.2.2 ships 6.29.1 but is inside the 7 day cooldown
     package:
       location: "/usr/local/lib/node_modules/npm/node_modules/undici/package.json"
