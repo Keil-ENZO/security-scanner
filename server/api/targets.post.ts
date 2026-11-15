@@ -12,7 +12,7 @@ const Body = z.object({
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, Body.parse)
   if (!body.repo && !body.url) {
-    throw createError({ statusCode: 400, message: 'A repository or a URL, at least' })
+    throw createError({ statusCode: 400, message: 'A target needs a repository or a URL' })
   }
   if (body.authHeader && !body.url) {
     throw createError({ statusCode: 400, message: 'Credentials are for the site scan: a URL is required' })
