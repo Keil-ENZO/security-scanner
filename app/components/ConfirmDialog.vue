@@ -4,6 +4,8 @@
 withDefaults(defineProps<{ title: string, confirmLabel: string, danger?: boolean }>(), { danger: false })
 
 const el = ref<HTMLDialogElement>()
+// The title names the dialog for screen readers
+const titleId = useId()
 let settle: ((ok: boolean) => void) | undefined
 
 // Opens the dialog. Resolves true on confirm, false on cancel or Escape
@@ -28,10 +30,13 @@ defineExpose({ ask })
   <dialog
     ref="el"
     class="dialog"
+    :aria-labelledby="titleId"
     @close="onClose"
   >
     <form method="dialog">
-      <h2>{{ title }}</h2>
+      <h2 :id="titleId">
+        {{ title }}
+      </h2>
       <div class="dialog-body">
         <slot />
       </div>

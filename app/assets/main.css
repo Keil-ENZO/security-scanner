@@ -381,6 +381,12 @@ button.danger-fill { background: var(--critical); border-color: var(--critical);
 .step-blockers li::marker { color: var(--critical); }
 .finding-line code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
 
+/* Narrow screens: the instance name gives way to the logo and the log out button */
+@media (max-width: 480px) {
+  .node { display: none; }
+  .brand { letter-spacing: 0.04em; }
+}
+
 .fold > summary { cursor: pointer; color: var(--muted); font: 500 12.5px var(--sans); }
 .fold[open] > summary { margin-bottom: 12px; }
 
