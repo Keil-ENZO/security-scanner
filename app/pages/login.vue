@@ -13,8 +13,9 @@ async function submit() {
     await refreshSession()
     await navigateTo('/')
   }
-  catch {
-    error.value = 'Access denied'
+  catch (err) {
+    // "Wrong password" from the server, or that the server could not be reached
+    error.value = errorMessage(err)
   }
   finally {
     pending.value = false
@@ -38,11 +39,14 @@ async function submit() {
     <p class="muted">
       Audit console of {{ instanceName }}.
     </p>
+    <label for="password">Password</label>
     <input
+      id="password"
       v-model="password"
       type="password"
-      placeholder="Password"
       autocomplete="current-password"
+      maxlength="256"
+      required
       autofocus
     >
     <button
@@ -54,8 +58,9 @@ async function submit() {
     <p
       v-if="error"
       class="error"
+      role="alert"
     >
-      ✕ {{ error }}
+      <span aria-hidden="true">✕ </span>{{ error }}
     </p>
   </form>
 </template>
@@ -64,4 +69,6 @@ async function submit() {
 /* The mark takes over the top spacing of the form, so both stay centred as one block */
 .login-mark { margin: 12vh auto 0; }
 .login { margin-top: 24px; }
+/* Sits on its input: takes back half of the gap of the form */
+.login label { margin-bottom: -6px; font-size: 12px; color: var(--muted); }
 </style>

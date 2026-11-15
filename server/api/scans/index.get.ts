@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     LEFT JOIN findings f ON f.scan_id = s.id
     GROUP BY s.id ORDER BY s.id DESC
   `).all(limit + 1) as unknown as HistoryScan[]
-  // The tiles cover every scan, not only the entries on the page
+  // The summary covers every scan, not only the entries on the page
   const stats = db.prepare(`
     SELECT COALESCE(SUM(status IN ('queued', 'running')), 0) AS active,
       MAX(CASE WHEN status = 'done' THEN created_at END) AS last_done,
