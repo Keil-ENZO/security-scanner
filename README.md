@@ -104,7 +104,7 @@ Everything goes through environment variables. `.env.example` lists them all.
 | `NUXT_GIT_AUTHOR_NAME`, `NUXT_GIT_AUTHOR_EMAIL` | | Author of the fix commits |
 | `NUXT_VERCEL_TOKEN` | | Build log of failed Vercel deployments |
 | `NUXT_NETLIFY_TOKEN` | | Error and summary of failed Netlify deploys |
-| `NUXT_CLOUDFLARE_TOKEN`, `NUXT_CLOUDFLARE_ACCOUNT_ID` | | Build log of failed Cloudflare Pages deployments. Token with Pages read |
+| `NUXT_CLOUDFLARE_TOKEN`, `NUXT_CLOUDFLARE_ACCOUNT_ID` | | Build log of failed Cloudflare Pages deployments, both are needed. Token with Pages read |
 | `NUXT_OLLAMA_URL`, `NUXT_OLLAMA_MODEL` | | Local LLM for the report |
 | `NUXT_AUTOMATION_TOKEN` | | Enables `/api/automation/*`, 32 characters minimum |
 | `NUXT_PUBLIC_URL` | | Interface address, for links in notifications |
@@ -121,27 +121,74 @@ Use a fine-grained token limited to the repositories you scan.
 
 - **Contents**: read to clone private repositories, write to push fix branches and merge.
 - **Pull requests**: write, to open and merge pull requests.
-- **Commit statuses** and **Checks**: read, for the Vercel preview and CI state.
-- **Deployments**: read, for hosts that report to GitHub Deployments, such as Render, Railway or Fly.
+- **Commit statuses** and **Checks**: read, for the preview deployment and CI state.
+- **Deployments**: read, for targets on the GitHub Deployments provider.
 
 `git` runs without global or system config: no credential other than this token can be used.
+
+## Deployment providers
+
+Each target has a deployment provider, chosen when the target is created. It decides how the deployment of a commit is found, where the build log comes from and which file receives the security headers. Vercel is the default, also for targets created before providers existed.
+
+| Provider | Deployment of a commit | Build log | Headers file |
+|---|---|---|---|
+| Vercel | Commit status or check run with `vercel` in its name | Tail of the build log, with `NUXT_VERCEL_TOKEN` | `vercel.json` |
+| Netlify | Commit status or check run with `netlify` in its name | No build log. Error message and deploy summary, with `NUXT_NETLIFY_TOKEN` | `netlify.toml` |
+| Cloudflare Pages | Commit status or check run with `cloudflare` in its name | Tail of the build log, with `NUXT_CLOUDFLARE_TOKEN` and `NUXT_CLOUDFLARE_ACCOUNT_ID` | `public/_headers` |
+| GitHub Deployments | Newest GitHub deployment of the commit, then its latest status | None | None |
+
+Names are matched in any case. When several checks match, the first one is used. Netlify prefers the one that links to a deploy page.
+
+### Build logs and tokens
+
+The provider tokens are optional and only used to read. Without them the deployment state still shows, the log does not. A log is only fetched for a failed deployment. It shows on the review page for a preview and on the target page for production. Its last 15 lines go in the notification sent after a merge.
+
+- **Vercel.** `NUXT_VERCEL_TOKEN` must be able to read the events of the deployment. The deployment id comes from the description or the link of the Vercel check.
+- **Netlify.** `NUXT_NETLIFY_TOKEN` must be able to read the deploy. The app reads its error message and its summary, not the build log. This needs a Netlify check that links to a deploy page on `app.netlify.com`.
+- **Cloudflare Pages.** `NUXT_CLOUDFLARE_TOKEN` needs Pages read. `NUXT_CLOUDFLARE_ACCOUNT_ID` is the account id, 32 hex characters. The project and the deployment id come from the dashboard link in the check run output, or in the commit status.
+- **GitHub Deployments.** No log and no extra token. `NUXT_GITHUB_TOKEN` needs **Deployments** read.
+
+### Security headers
+
+A fix adds the missing headers to a catch-all rule of the file, at the root of the repository. The file and the rule are created when missing. Headers already set in that rule are left alone, whatever their case.
+
+- `vercel.json`: the `/(.*)` rule.
+- `netlify.toml`: a `[[headers]]` block with `for = "/*"`.
+- `public/_headers`: the `/*` rule. Cloudflare Pages serves `_headers` from the build output, so this covers frameworks that copy `public/` there as is. A project with another static folder, such as `static/`, is not covered.
+
+### GitHub Deployments
+
+The generic provider, for any host that reports to the GitHub Deployments API, such as Render, Railway, Fly or a CI job.
+
+What it does:
+
+- Reads the newest deployment of the commit and its latest status. Only that one is read, whatever its environment.
+- Counts `success` and `inactive` as live, `failure` and `error` as failed, anything else as pending.
+- Links to the environment URL of that status, else its target URL, else its log URL.
+- Feeds the preview link of the review, the production state of the target page and the notification after a merge, like the other providers.
+
+What it does not do:
+
+- No build log.
+- No headers file. Missing headers go to the manual list of the fix, to set on the host.
+- It does not gate the merge. The merge conditions read commit statuses and check runs only. A deployment that reports only to GitHub Deployments does not block a merge.
 
 ## Fix, review, merge
 
 1. **Fix** pushes a `security/scan-N-fix-M` branch, then scans it. Nothing lands on the default branch.
 2. **Branches**: the repository branches, read from GitHub. Each one can be scanned. A branch is only tested through its code: the live site is production.
-3. **Review**: branch scan compared with the default branch scan, Vercel preview, commits, diff file by file.
+3. **Review**: branch scan compared with the default branch scan, preview deployment, commits, diff file by file.
 4. **Approve** opens the pull request.
-5. **Merge** squashes. Blocked until the latest commit is scanned, the preview is green, the branch is up to date with the base, and it introduces no finding. These conditions are checked again on the server, and GitHub refuses the merge if a commit lands in between. The branch is then deleted and the default branch scanned again.
+5. **Merge** squashes. Blocked until the latest commit is scanned, its commit statuses and check runs are green, the branch is up to date with the base, and it introduces no finding. These conditions are checked again on the server, and GitHub refuses the merge if a commit lands in between. The branch is then deleted and the default branch scanned again.
 6. **Update** a branch that is behind: the base is merged into it, the preview and the scan run again. On conflict, a `security/*` branch is recreated from the current base, and the old one and its PR are closed.
-7. **Production.** After the merge, the Vercel deployment is followed for up to 20 min and the result is sent as a notification. The target page shows the production state. With `NUXT_VERCEL_TOKEN`, the build log of a failed deployment shows up, for production and previews.
+7. **Production.** After the merge, the deployment of the merge commit is looked up through the provider of the target, every 20 s for up to 20 min. A notification is sent when it is live, when it fails, or when it is still running at the end. If no deployment shows up at all, nothing is sent. The target page shows the deployment of the latest commit on the default branch, or the combined state of its checks when the provider finds none. The build log of a failed deployment shows up for production and previews, when the provider has one and its token is set. See [Deployment providers](#deployment-providers).
 
 How fixes work:
 
 - **Dependencies.** A direct dependency is raised in `package.json`. A transitive one gets an override scoped to the vulnerable version, `"proxy-addr@2.0.7": "2.0.8"`. A major version is never forced on a transitive dependency.
 - **Lockfile** regenerated by the package manager of the project, then installed frozen, the way the host will install it. No code from the repository runs. An override that breaks an exact peer, `@tiptap/core` without `@tiptap/pm`, goes back to the manual list.
 - **Verification.** Grype runs again on the branch. Only what it no longer sees is marked fixed.
-- **HTTP headers** added to `vercel.json`, only the ones that cannot break anything. CSP and `Cross-Origin-*` stay manual.
+- **HTTP headers** added to the config file of the provider, `vercel.json`, `netlify.toml` or `public/_headers`. Only the ones that cannot break anything. CSP and `Cross-Origin-*` stay manual. The GitHub Deployments provider has no such file, so every header stays manual.
 - **The local LLM** never touches the code. It writes in the PR what to test in the preview.
 
 ### Package managers
