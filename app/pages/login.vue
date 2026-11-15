@@ -28,7 +28,7 @@ async function submit() {
     @submit.prevent="submit"
   >
     <p class="label">
-      // Authentication
+      Authentication
     </p>
     <h1>Restricted access</h1>
     <p class="muted">

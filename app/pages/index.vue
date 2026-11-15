@@ -85,7 +85,7 @@ onUnmounted(() => clearInterval(timer))
   <section class="panel">
     <div class="panel-head">
       <p class="label">
-        // Targets
+        Targets
       </p>
       <button
         class="ghost"
@@ -203,7 +203,7 @@ onUnmounted(() => clearInterval(timer))
 
   <section class="panel">
     <p class="label">
-      // History
+      History
     </p>
     <p
       v-if="!scans?.length"
