@@ -115,7 +115,7 @@ onUnmounted(() => clearInterval(timer))
     <section class="scan-head">
       <div>
         <p class="label">
-          // Review · {{ data.target.name }}
+          Review · {{ data.target.name }}
         </p>
         <h1><code class="mono">{{ data.ref }}</code> <span class="muted arrow">→</span> <code class="mono">{{ data.base }}</code></h1>
         <div class="meta mono">
@@ -193,7 +193,7 @@ onUnmounted(() => clearInterval(timer))
     >
       <div>
         <p class="label">
-          // {{ data.conflicts ? 'Conflicts with' : 'Behind' }} {{ data.base }}
+          {{ data.conflicts ? 'Conflicts with' : 'Behind' }} {{ data.base }}
         </p>
         <p
           v-if="recreate"
@@ -252,7 +252,7 @@ onUnmounted(() => clearInterval(timer))
       class="panel"
     >
       <p class="label">
-        // Branch scan compared with {{ data.base }}
+        Branch scan compared with {{ data.base }}
       </p>
       <div class="kpis compare">
         <div class="kpi">
@@ -285,7 +285,7 @@ onUnmounted(() => clearInterval(timer))
       class="panel"
     >
       <p class="label">
-        // Comparison
+        Comparison
       </p>
       <p class="empty">
         Comparing needs a scan of {{ data.base }} and a scan of the branch.
@@ -297,7 +297,7 @@ onUnmounted(() => clearInterval(timer))
       class="panel"
     >
       <p class="label">
-        // Preview failure
+        Preview failure
       </p>
       <pre
         v-if="data.previewLogs"
@@ -316,7 +316,7 @@ onUnmounted(() => clearInterval(timer))
       class="panel"
     >
       <p class="label">
-        // Checks
+        Checks
       </p>
       <div
         v-for="c in data.checks.items"
@@ -337,7 +337,7 @@ onUnmounted(() => clearInterval(timer))
 
     <section class="panel">
       <p class="label">
-        // Commits · {{ data.commits.length }}
+        Commits · {{ data.commits.length }}
       </p>
       <div
         v-for="c in data.commits"
@@ -352,7 +352,7 @@ onUnmounted(() => clearInterval(timer))
 
     <section class="panel">
       <p class="label">
-        // Files · {{ data.files.length }}
+        Files · {{ data.files.length }}
       </p>
       <details
         v-for="f in data.files"
@@ -385,7 +385,7 @@ v-for="(line, i) in f.patch.split('\n')"
 
     <section class="panel danger-zone">
       <p class="label">
-        // Drop
+        Drop
       </p>
       <button
         class="ghost danger"

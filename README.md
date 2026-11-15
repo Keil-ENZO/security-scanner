@@ -1,3 +1,5 @@
+<img src="public/favicon.svg" alt="Security Scanner logo" width="72" height="72">
+
 # Security Scanner
 
 [![CI](https://github.com/Keil-ENZO/security-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/Keil-ENZO/security-scanner/actions/workflows/ci.yml)

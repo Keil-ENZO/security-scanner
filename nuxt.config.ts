@@ -3,7 +3,15 @@ export default defineNuxtConfig({
   modules: ['nuxt-auth-utils', '@nuxt/eslint'],
   devtools: { enabled: false },
   app: {
-    head: { title: 'Security Scanner', htmlAttrs: { lang: 'en' } },
+    head: {
+      title: 'Security Scanner',
+      htmlAttrs: { lang: 'en' },
+      // The .ico is the fallback. Its sizes hint keeps browsers that read SVG on the SVG
+      link: [
+        { rel: 'icon', href: '/favicon.ico', sizes: '32x32' },
+        { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+      ],
+    },
   },
   css: ['~/assets/main.css'],
   runtimeConfig: {
