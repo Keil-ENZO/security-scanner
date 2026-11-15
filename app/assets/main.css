@@ -310,3 +310,28 @@ dd.fix { color: var(--ok); }
 .build-log { max-height: 360px; overflow: auto; white-space: pre-wrap; padding: 8px 12px; }
 .deploy.failure { border-left: 2px solid var(--critical); }
 .deploy-line { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+
+/* Home: target status and history groups */
+.target-row.status-row { grid-template-columns: 1.1fr 1.5fr 1.4fr auto; }
+.target-source, .target-status { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.target-status:hover .when { color: var(--accent-text, var(--accent)); }
+
+.history-row { grid-template-columns: 96px 1.2fr 110px 1.6fr 1fr; }
+.origin { justify-self: start; padding: 1px 7px; }
+.origin.scheduled { color: var(--accent-text, var(--accent)); border-color: currentColor; }
+.origin.manual { color: var(--text); }
+/* A row that is a button: drop the button look, keep the row */
+.history-toggle {
+  width: 100%; background: transparent; color: inherit; font: inherit; letter-spacing: 0; text-align: left;
+  border: 0; border-top: 1px solid var(--border);
+}
+.history-toggle:hover { filter: none; }
+.chevron { display: inline-block; width: 14px; color: var(--muted); }
+/* Indented by 18px, the first column gives them back: columns stay aligned with the batch row */
+.history-scans { margin: 0 0 8px 8px; padding-left: 8px; border-left: 2px solid var(--border-strong); }
+.history-scans .history-row { grid-template-columns: 78px 1.2fr 110px 1.6fr 1fr; }
+.load-more { display: block; margin: 12px auto 0; }
+
+@media (max-width: 760px) {
+  .target-row.status-row, .history-row, .history-scans .history-row { grid-template-columns: 1fr; gap: 6px; }
+}

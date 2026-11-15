@@ -1,9 +1,36 @@
 <script setup lang="ts">
-interface Target { id: number, name: string, repo: string | null, url: string | null, scheduled: number, provider: string, has_auth: number, last_scan_id: number | null }
-interface ScanRow { id: number, target: string, ref: string | null, origin: string, status: string, created_at: string, critical: number, high: number, medium: number, low: number, total: number }
+interface Counts { critical: number | null, high: number | null, medium: number | null, low: number | null, total: number }
+// done_*: latest finished scan of the default branch, the counts are its counts
+interface Target extends Counts { id: number, name: string, repo: string | null, url: string | null, scheduled: number, provider: string, has_auth: number, last_scan_id: number | null, done_scan_id: number | null, done_at: string | null }
+interface ScanRow extends Counts { id: number, target: string, ref: string | null, origin: string, status: string, created_at: string }
+// A scheduled batch, or a single scan
+interface Entry extends Counts { key: string, origin: string, batch: string | null, status: string, created_at: string, finished: number, failed: number, scans: ScanRow[] }
+interface History { entries: Entry[], more: boolean, active: number, last_done: string | null, last_scheduled: string | null }
 
+const PAGE = 10
+// Grows with "Load older". A refresh asks again for everything shown: nothing loaded is dropped
+const limit = ref(PAGE)
 const { data: targets, refresh: refreshTargets } = await useFetch<Target[]>('/api/targets')
-const { data: scans, refresh: refreshScans } = await useFetch<ScanRow[]>('/api/scans')
+const { data: history, refresh: refreshScans } = await useFetch<History>('/api/scans', { key: 'history', query: { limit }, watch: false })
+const entries = computed(() => history.value?.entries ?? [])
+
+const loadingMore = ref(false)
+async function loadMore() {
+  loadingMore.value = true
+  limit.value += PAGE
+  try {
+    await refreshScans()
+  }
+  finally {
+    loadingMore.value = false
+  }
+}
+
+// Kept apart from the fetched data: a refresh does not collapse an expanded batch
+const expanded = ref(new Set<string>())
+function toggle(key: string) {
+  if (!expanded.value.delete(key)) expanded.value.add(key)
+}
 
 // Same ids as the server providers
 const providers = [
@@ -50,14 +77,17 @@ async function remove(t: Target) {
   await Promise.all([refreshTargets(), refreshScans()])
 }
 
-const active = computed(() => scans.value?.filter(s => s.status === 'queued' || s.status === 'running').length ?? 0)
-const lastDone = computed(() => scans.value?.find(s => s.status === 'done'))
-const lastScheduled = computed(() => scans.value?.find(s => s.origin === 'scheduled'))
+const active = computed(() => history.value?.active ?? 0)
 
 // Refresh while a scan is running
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
-  timer = setInterval(() => active.value && refreshScans(), 5000)
+  timer = setInterval(async () => {
+    if (!active.value) return
+    await refreshScans()
+    // After the history: a scan it shows as done is then in the target status
+    await refreshTargets()
+  }, 5000)
 })
 onUnmounted(() => clearInterval(timer))
 </script>
@@ -74,11 +104,11 @@ onUnmounted(() => clearInterval(timer))
     </div>
     <div class="kpi">
       <span class="label">Last audit</span>
-      <strong class="small">{{ lastDone ? formatDate(lastDone.created_at) : '—' }}</strong>
+      <strong class="small">{{ formatDate(history?.last_done ?? null) }}</strong>
     </div>
     <div class="kpi">
       <span class="label">Last scheduled audit</span>
-      <strong class="small">{{ lastScheduled ? formatDate(lastScheduled.created_at) : '—' }}</strong>
+      <strong class="small">{{ formatDate(history?.last_scheduled ?? null) }}</strong>
     </div>
   </section>
 
@@ -156,7 +186,7 @@ onUnmounted(() => clearInterval(timer))
       <div
         v-for="t in targets"
         :key="t.id"
-        class="row target-row"
+        class="row target-row status-row"
       >
         <div>
           <NuxtLink
@@ -178,8 +208,22 @@ onUnmounted(() => clearInterval(timer))
             >authenticated</span>
           </div>
         </div>
-        <code class="mono muted">{{ t.repo ?? '—' }}</code>
-        <code class="mono muted">{{ t.url ?? '—' }}</code>
+        <div class="target-source">
+          <code class="mono muted">{{ t.repo ?? '—' }}</code>
+          <code class="mono muted">{{ t.url ?? '—' }}</code>
+        </div>
+        <NuxtLink
+          v-if="t.done_scan_id"
+          :to="`/scans/${t.done_scan_id}`"
+          class="target-status"
+        >
+          <SevCounts :counts="t" />
+          <span class="when mono muted">Last scan {{ formatDate(t.done_at) }} →</span>
+        </NuxtLink>
+        <span
+          v-else
+          class="mono muted"
+        >{{ t.last_scan_id ? 'No finished scan' : 'Never scanned' }}</span>
         <div class="actions">
           <NuxtLink
             v-if="t.repo"
@@ -206,48 +250,95 @@ onUnmounted(() => clearInterval(timer))
       History
     </p>
     <p
-      v-if="!scans?.length"
+      v-if="!entries.length"
       class="empty"
     >
       No scans.
     </p>
-    <div
-      v-else
-      class="rows"
-    >
-      <NuxtLink
-        v-for="s in scans"
-        :key="s.id"
-        :to="`/scans/${s.id}`"
-        class="row scan-row"
+    <template v-else>
+      <div class="rows">
+        <template
+          v-for="e in entries"
+          :key="e.key"
+        >
+          <template v-if="e.batch">
+            <button
+              type="button"
+              class="row scan-row history-row history-toggle"
+              :aria-expanded="expanded.has(e.key)"
+              :aria-controls="`history-${e.key}`"
+              @click="toggle(e.key)"
+            >
+              <span :class="['tag', 'origin', e.origin]">{{ ORIGIN_LABEL[e.origin] ?? e.origin }}</span>
+              <span>
+                <span
+                  class="chevron"
+                  aria-hidden="true"
+                >{{ expanded.has(e.key) ? '▾' : '▸' }}</span>
+                <strong>{{ e.scans.length }} {{ e.scans.length === 1 ? 'target' : 'targets' }}</strong>
+                <span
+                  v-if="e.finished < e.scans.length"
+                  class="mono muted"
+                > · {{ e.finished }}/{{ e.scans.length }} finished</span>
+                <span
+                  v-if="e.failed"
+                  class="mono muted"
+                > · {{ e.failed }} failed</span>
+              </span>
+              <StatusPill :status="e.status" />
+              <SevCounts :counts="e" />
+              <span class="muted mono right">{{ formatDate(e.created_at) }}</span>
+            </button>
+            <div
+              v-show="expanded.has(e.key)"
+              :id="`history-${e.key}`"
+              class="rows history-scans"
+            >
+              <NuxtLink
+                v-for="s in e.scans"
+                :key="s.id"
+                :to="`/scans/${s.id}`"
+                class="row scan-row history-row"
+              >
+                <code class="mono muted">#{{ String(s.id).padStart(4, '0') }}</code>
+                <span><strong>{{ s.target }}</strong> <code
+                  v-if="s.ref"
+                  class="mono muted"
+                >⎇ {{ s.ref }}</code></span>
+                <StatusPill :status="s.status" />
+                <SevCounts :counts="s" />
+                <span class="muted mono right">{{ formatDate(s.created_at) }}</span>
+              </NuxtLink>
+            </div>
+          </template>
+          <template v-else>
+            <NuxtLink
+              v-for="s in e.scans"
+              :key="s.id"
+              :to="`/scans/${s.id}`"
+              class="row scan-row history-row"
+            >
+              <span :class="['tag', 'origin', s.origin]">{{ ORIGIN_LABEL[s.origin] ?? s.origin }}</span>
+              <span><strong>{{ s.target }}</strong> <code class="mono muted">#{{ String(s.id).padStart(4, '0') }}</code> <code
+                v-if="s.ref"
+                class="mono muted"
+              >⎇ {{ s.ref }}</code></span>
+              <StatusPill :status="s.status" />
+              <SevCounts :counts="s" />
+              <span class="muted mono right">{{ formatDate(s.created_at) }}</span>
+            </NuxtLink>
+          </template>
+        </template>
+      </div>
+      <button
+        v-if="history?.more"
+        type="button"
+        class="ghost load-more"
+        :disabled="loadingMore"
+        @click="loadMore"
       >
-        <code class="mono muted">#{{ String(s.id).padStart(4, '0') }}</code>
-        <span><strong>{{ s.target }}</strong> <code
-          v-if="s.ref"
-          class="mono muted"
-        >⎇ {{ s.ref }}</code></span>
-        <StatusPill :status="s.status" />
-        <div class="counts">
-          <span
-            v-if="s.critical"
-            class="count critical"
-          >{{ s.critical }} C</span>
-          <span
-            v-if="s.high"
-            class="count high"
-          >{{ s.high }} H</span>
-          <span
-            v-if="s.medium"
-            class="count medium"
-          >{{ s.medium }} M</span>
-          <span
-            v-if="s.low"
-            class="count low"
-          >{{ s.low }} L</span>
-          <span class="muted mono">{{ s.total }} total</span>
-        </div>
-        <span class="muted mono right">{{ s.origin }} · {{ formatDate(s.created_at) }}</span>
-      </NuxtLink>
-    </div>
+        {{ loadingMore ? 'Loading…' : 'Load older' }}
+      </button>
+    </template>
   </section>
 </template>
