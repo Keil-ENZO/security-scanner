@@ -18,6 +18,7 @@ const STATES: Record<string, string> = {
 export const genericProvider: DeployProvider = {
   label: 'GitHub Deployments',
   headersFile: null,
+  logsConfig: [],
 
   // Latest deployment of the commit, newest first, then its latest status
   async deployment(repo, sha) {

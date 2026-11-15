@@ -12,6 +12,7 @@ interface Review {
   checks: { state: string, warning: string | null, items: { name: string, state: string, url: string | null, description: string | null }[] }
   preview: string | null
   previewLogs: string | null
+  previewLogsHint: string | null
   conflicts: boolean
   pr: { number: number, url: string, draft: boolean } | null
   scans: { base: { id: number } | null, branch: { id: number, sha: string | null } | null, runningId: number | null, upToDate: boolean }
@@ -82,7 +83,7 @@ const blockers = computed(() => {
   if (!d.scans.upToDate) out.push('The latest commit of the branch has not been scanned')
   if (d.checks.state === 'pending') out.push('Preview and checks pending')
   if (d.checks.state === 'failure') out.push('Preview or checks failing')
-  if (d.checks.state === 'unavailable') out.push('Preview status unreadable: check the token permissions')
+  if (d.checks.state === 'unavailable') out.push('Preview status unreadable: check the GitHub token permissions')
   if (d.diff?.introduced.length) out.push('The branch introduces new findings')
   return out
 })
@@ -292,13 +293,22 @@ onUnmounted(() => clearInterval(timer))
     </section>
 
     <section
-      v-if="data.previewLogs"
+      v-if="data.previewLogs || data.previewLogsHint"
       class="panel"
     >
       <p class="label">
-        // Preview build log
+        // Preview failure
       </p>
-      <pre class="patch build-log">{{ data.previewLogs }}</pre>
+      <pre
+        v-if="data.previewLogs"
+        class="patch build-log"
+      >{{ data.previewLogs }}</pre>
+      <p
+        v-else
+        class="muted mono"
+      >
+        {{ data.previewLogsHint }}
+      </p>
     </section>
 
     <section
