@@ -57,7 +57,7 @@ Released images ship with every scanner. Each binary is checked against its rele
 ```yaml
 services:
   security-scanner:
-    image: ghcr.io/keil-enzo/security-scanner:0.5
+    image: ghcr.io/keil-enzo/security-scanner:0.6
     restart: unless-stopped
     env_file: .env
     environment:
@@ -76,16 +76,16 @@ The image listens on `127.0.0.1` by default. That suits `network_mode: host`. Wi
 ### Verify the image
 
 ```bash
-cosign verify ghcr.io/keil-enzo/security-scanner:0.5 \
+cosign verify ghcr.io/keil-enzo/security-scanner:0.6 \
   --certificate-identity-regexp '^https://github.com/Keil-ENZO/security-scanner/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
-cosign verify-attestation ghcr.io/keil-enzo/security-scanner:0.5 --type cyclonedx \
+cosign verify-attestation ghcr.io/keil-enzo/security-scanner:0.6 --type cyclonedx \
   --certificate-identity-regexp '^https://github.com/Keil-ENZO/security-scanner/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   | jq -r .payload | base64 -d | jq .predicate > sbom.cdx.json
 
-gh attestation verify oci://ghcr.io/keil-enzo/security-scanner:0.5 --owner Keil-ENZO
+gh attestation verify oci://ghcr.io/keil-enzo/security-scanner:0.6 --owner Keil-ENZO
 ```
 
 ## Configuration
