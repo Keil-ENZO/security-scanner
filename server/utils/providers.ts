@@ -1,3 +1,4 @@
+import { useRuntimeConfig } from '#imports'
 import { cloudflareProvider } from './deploy-cloudflare'
 import { genericProvider } from './deploy-generic'
 import { netlifyProvider } from './deploy-netlify'
@@ -15,6 +16,10 @@ export interface DeployProvider {
   deployment: (repo: string, sha: string, checks: Checks) => Promise<Deployment | null>
   // Tail of the build log, null without a token. Read only
   logs: (d: Deployment) => Promise<string | null>
+  // Runtime config keys logs() needs. Empty: the provider keeps no log
+  logsConfig: string[]
+  // What logs() returns, "build log" by default
+  logsName?: string
   // Config file holding the headers, at the root of the repository. null: no known file, headers stay manual
   headersFile: string | null
   // Adds the missing headers to the file content, undefined when the file does not exist. No I/O
@@ -24,6 +29,7 @@ export interface DeployProvider {
 const vercel = {
   label: 'Vercel',
   headersFile: 'vercel.json',
+  logsConfig: ['vercelToken'],
 
   async deployment(_repo, _sha, checks) {
     return checks.items.find(i => /vercel/i.test(i.name)) ?? null
@@ -75,4 +81,16 @@ export function isProviderId(id: string): id is ProviderId {
 // Provider of a target. An unknown value falls back to Vercel, the default before providers existed
 export function deployProvider(id: string | null | undefined): DeployProvider {
   return id && isProviderId(id) ? providers[id] : providers.vercel
+}
+
+// NUXT_<KEY_IN_SNAKE_CASE>: the env variable behind a runtime config key
+const envName = (key: string) => `NUXT_${key.replace(/[A-Z]/g, c => `_${c}`).toUpperCase()}`
+
+// Shown in place of the log of a failed deployment: what to set, or that there is nothing to read
+export function logsHint(p: DeployProvider) {
+  const what = p.logsName ?? 'build log'
+  if (!p.logsConfig.length) return `${p.label} keeps no ${what}.`
+  const config = useRuntimeConfig() as Record<string, unknown>
+  const missing = p.logsConfig.filter(k => !config[k]).map(envName)
+  return missing.length ? `Set ${missing.join(' and ')} to see the ${what} here.` : `No ${what} available for this deployment.`
 }

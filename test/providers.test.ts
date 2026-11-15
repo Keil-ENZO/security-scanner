@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { deployProvider, isProviderId, providers } from '../server/utils/providers'
+import { readFileSync } from 'node:fs'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { deployProvider, isProviderId, logsHint, providers } from '../server/utils/providers'
 import type { Checks } from '../server/utils/github'
+import { runtimeConfig } from './stubs/imports'
 
 const headers = { 'x-content-type-options': 'nosniff', 'x-frame-options': 'SAMEORIGIN' }
 
@@ -68,5 +70,41 @@ describe('deployProvider', () => {
     // Inherited keys are not providers
     expect(isProviderId('toString')).toBe(false)
     expect(deployProvider('__proto__')).toBe(providers.vercel)
+  })
+})
+
+describe('logsHint', () => {
+  const unset = { vercelToken: '', netlifyToken: '', cloudflareToken: '', cloudflareAccountId: '' }
+
+  beforeEach(() => {
+    Object.assign(runtimeConfig, unset)
+  })
+
+  it('names the env variables of the provider', () => {
+    expect(logsHint(providers.vercel)).toBe('Set NUXT_VERCEL_TOKEN to see the build log here.')
+    expect(logsHint(providers.netlify)).toBe('Set NUXT_NETLIFY_TOKEN to see the deploy error here.')
+    expect(logsHint(providers.cloudflare)).toBe('Set NUXT_CLOUDFLARE_TOKEN and NUXT_CLOUDFLARE_ACCOUNT_ID to see the build log here.')
+  })
+
+  it('only names what is missing', () => {
+    runtimeConfig.cloudflareToken = 't'
+    expect(logsHint(providers.cloudflare)).toBe('Set NUXT_CLOUDFLARE_ACCOUNT_ID to see the build log here.')
+  })
+
+  it('asks for nothing once everything is set', () => {
+    Object.assign(runtimeConfig, { vercelToken: 't', netlifyToken: 't' })
+    expect(logsHint(providers.vercel)).toBe('No build log available for this deployment.')
+    expect(logsHint(providers.netlify)).toBe('No deploy error available for this deployment.')
+  })
+
+  it('asks for no token when the provider keeps no log', () => {
+    expect(logsHint(providers.generic)).toBe('GitHub Deployments keeps no build log.')
+  })
+
+  it('only reads keys declared in nuxt.config', () => {
+    const config = readFileSync(new URL('../nuxt.config.ts', import.meta.url), 'utf8')
+    for (const p of Object.values(providers)) {
+      for (const key of p.logsConfig) expect(config).toContain(`${key}: ''`)
+    }
   })
 })
