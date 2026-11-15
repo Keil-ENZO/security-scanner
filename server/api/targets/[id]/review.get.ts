@@ -2,8 +2,6 @@
 interface CompareFile { filename: string, status: string, additions: number, deletions: number, patch?: string }
 interface CompareCommit { sha: string, commit: { message: string, author: { name: string, date: string } } }
 
-const key = (f: { tool: string, rule_id: string | null, title: string }) => `${f.tool}|${f.rule_id}|${f.title}`
-
 export default defineEventHandler(async (event) => {
   const t = targetRepo(Number(getRouterParam(event, 'id')))
   const ref = validRef(String(getQuery(event).ref ?? ''))
@@ -37,13 +35,7 @@ export default defineEventHandler(async (event) => {
   if (baseScan && branchScan) {
     const before = codeFindings.all(baseScan.id) as { tool: string, severity: string, title: string, rule_id: string | null, location: string | null }[]
     const after = codeFindings.all(branchScan.id) as typeof before
-    const afterKeys = new Set(after.map(key))
-    const beforeKeys = new Set(before.map(key))
-    diff = {
-      resolved: before.filter(f => !afterKeys.has(key(f))),
-      introduced: after.filter(f => !beforeKeys.has(key(f))),
-      remaining: after.filter(f => beforeKeys.has(key(f))).length,
-    }
+    diff = diffFindings(before, after)
   }
 
   const fix = db.prepare('SELECT id, summary FROM fixes WHERE branch = ? ORDER BY id DESC LIMIT 1').get(ref) as { id: number, summary: string | null } | undefined
