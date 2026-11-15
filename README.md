@@ -59,7 +59,7 @@ Released images ship with every scanner. Each binary is checked against its rele
 ```yaml
 services:
   security-scanner:
-    image: ghcr.io/keil-enzo/security-scanner:0.6
+    image: ghcr.io/keil-enzo/security-scanner:0.7
     restart: unless-stopped
     env_file: .env
     environment:
@@ -78,16 +78,16 @@ The image listens on `127.0.0.1` by default. That suits `network_mode: host`. Wi
 ### Verify the image
 
 ```bash
-cosign verify ghcr.io/keil-enzo/security-scanner:0.6 \
+cosign verify ghcr.io/keil-enzo/security-scanner:0.7 \
   --certificate-identity-regexp '^https://github.com/Keil-ENZO/security-scanner/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
-cosign verify-attestation ghcr.io/keil-enzo/security-scanner:0.6 --type cyclonedx \
+cosign verify-attestation ghcr.io/keil-enzo/security-scanner:0.7 --type cyclonedx \
   --certificate-identity-regexp '^https://github.com/Keil-ENZO/security-scanner/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   | jq -r .payload | base64 -d | jq .predicate > sbom.cdx.json
 
-gh attestation verify oci://ghcr.io/keil-enzo/security-scanner:0.6 --owner Keil-ENZO
+gh attestation verify oci://ghcr.io/keil-enzo/security-scanner:0.7 --owner Keil-ENZO
 ```
 
 ## Configuration
@@ -177,7 +177,7 @@ What it does not do:
 
 ## Fix, review, merge
 
-1. **Fix** pushes a `security/scan-N-fix-M` branch, then scans it. Nothing lands on the default branch.
+1. **Fix** says what it is about to do and asks for confirmation. It then pushes a `security/scan-N-fix-M` branch and scans it. Nothing lands on the default branch.
 2. **Branches**: the repository branches, read from GitHub. Each one can be scanned. A branch is only tested through its code: the live site is production.
 3. **Review**: branch scan compared with the default branch scan, preview deployment, commits, diff file by file.
 4. **Approve** opens the pull request.

@@ -26,24 +26,13 @@ const id = route.params.id as string
 const branch = computed(() => String(route.query.ref ?? ''))
 const { data, error, refresh } = await useFetch<Review>(`/api/targets/${id}/review`, { query: { ref: branch } })
 
-const errorMessage = computed(() => (error.value?.data as { message?: string } | undefined)?.message ?? 'Error')
-const actionError = ref('')
-const acting = ref('')
+const loadError = computed(() => errorMessage(error.value))
 
-async function act(name: string, fn: () => Promise<unknown>) {
-  actionError.value = ''
-  acting.value = name
-  try {
-    await fn()
-  }
-  catch (err: any) {
-    actionError.value = err?.data?.message ?? 'Error'
-  }
-  finally {
-    acting.value = ''
-  }
-}
-
+const { busy: acting, error: actionError, run: act } = useAction()
+// Each of them names the branch and says what the action does before it runs
+const mergeDialog = ref<{ ask: () => Promise<boolean> }>()
+const dropDialog = ref<{ ask: () => Promise<boolean> }>()
+const recreateDialog = ref<{ ask: () => Promise<boolean> }>()
 const scanBranch = () => act('scan', async () => {
   await $fetch(`/api/targets/${id}/scan`, { method: 'POST', body: { ref: branch.value } })
   await refresh()
@@ -52,20 +41,19 @@ const openPr = () => act('pr', async () => {
   await $fetch(`/api/targets/${id}/pr`, { method: 'POST', body: { ref: branch.value } })
   await refresh()
 })
-const merge = () => act('merge', async () => {
-  if (!confirm(`Squash merge ${branch.value} into ${data.value?.base}?`)) return
+// The question comes first: nothing shows as running while the dialog is open
+const merge = async () => await mergeDialog.value?.ask() && act('merge', async () => {
   const { scanId } = await $fetch<{ scanId: number }>(`/api/targets/${id}/merge`, { method: 'POST', body: { ref: branch.value } })
   await navigateTo(`/scans/${scanId}`)
 })
 // Behind the base: merge the base into the branch. On conflict, a scanner branch is recreated
-const update = () => act('update', async () => {
+const update = async () => (!recreate.value || await recreateDialog.value?.ask()) && act('update', async () => {
   const res = await $fetch<{ updated?: boolean, recreated?: boolean, baseScanId?: number }>(`/api/targets/${id}/update`, { method: 'POST', body: { ref: branch.value } })
   if (res.recreated) return navigateTo(`/scans/${res.baseScanId}`)
   await refresh()
 })
 const recreate = computed(() => !!data.value?.conflicts && branch.value.startsWith('security/'))
-const drop = () => act('drop', async () => {
-  if (!confirm(`Delete branch ${branch.value}?`)) return
+const drop = async () => await dropDialog.value?.ask() && act('drop', async () => {
   await $fetch(`/api/targets/${id}/branch`, { method: 'DELETE', query: { ref: branch.value } })
   await navigateTo(`/targets/${id}`)
 })
@@ -88,6 +76,32 @@ const blockers = computed(() => {
   return out
 })
 
+// What each step is waiting for, in one sentence
+const hints = computed(() => {
+  const d = data.value
+  if (!d) return { scan: '', preview: '', approval: '', merge: '' }
+  return {
+    scan: d.scans.runningId
+      ? 'The branch is being scanned. This page refreshes on its own.'
+      : d.scans.upToDate ? 'The latest commit of the branch is scanned.' : 'Scan the latest commit of the branch.',
+    preview: ({
+      success: 'Every check of the latest commit is green.',
+      failure: 'A check or the preview failed. See the checks below.',
+      pending: 'Checks are running. This page refreshes on its own.',
+      none: 'No check ran on this commit. Nothing blocks here.',
+      unavailable: 'GitHub did not return the checks of this commit.',
+    } as Record<string, string>)[d.checks.state] ?? '',
+    approval: d.pr
+      ? (d.pr.draft ? 'The pull request is a draft. Mark it ready on GitHub.' : 'The pull request is open.')
+      : !d.aheadBy
+          ? `Nothing to approve: no commit ahead of ${d.base}.`
+          : d.scans.upToDate ? 'Approving opens the pull request on GitHub.' : 'Scan the branch first.',
+    merge: d.canMerge ? `Squash merge into ${d.base}. Production is then scanned again.` : '',
+  }
+})
+
+const checkLabel: Record<string, string> = { success: 'Passed', failure: 'Failed', pending: 'Running' }
+
 const lineClass = (line: string) =>
   line.startsWith('@@') ? 'hunk' : line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : ''
 
@@ -100,15 +114,13 @@ onUnmounted(() => clearInterval(timer))
 
 <!-- The diff comes from the repository: rendered as text, line by line, never v-html -->
 <template>
-  <NuxtLink
-    :to="`/targets/${id}`"
-    class="back"
-  >← Branches</NuxtLink>
+  <BreadcrumbTrail :items="[{ label: 'Targets', to: '/' }, { label: data?.target.name ?? 'Target', to: `/targets/${id}` }, { label: branch }]" />
   <p
     v-if="error"
     class="error"
+    role="alert"
   >
-    ✕ {{ errorMessage }}
+    ✕ {{ loadError }}
   </p>
 
   <template v-if="data">
@@ -118,75 +130,100 @@ onUnmounted(() => clearInterval(timer))
           Review · {{ data.target.name }}
         </p>
         <h1><code class="mono">{{ data.ref }}</code> <span class="muted arrow">→</span> <code class="mono">{{ data.base }}</code></h1>
-        <div class="meta mono">
-          <span>{{ data.aheadBy }} commit{{ data.aheadBy === 1 ? '' : 's' }} ahead</span>
-          <span v-if="data.behindBy">⚠ {{ data.behindBy }} behind {{ data.base }}</span>
-          <span v-if="data.headSha">◉ {{ data.headSha.slice(0, 7) }}</span>
+        <div class="meta">
+          <span>{{ data.aheadBy }} commit{{ data.aheadBy === 1 ? '' : 's' }} ahead of {{ data.base }}</span>
+          <span
+            v-if="data.behindBy"
+            class="stale-inline"
+          >{{ data.behindBy }} behind</span>
+          <span v-if="data.headSha">Latest commit <code class="mono">{{ data.headSha.slice(0, 7) }}</code></span>
         </div>
       </div>
     </section>
 
     <!-- The four steps -->
-    <section class="steps">
-      <div :class="['step', data.scans.upToDate ? 'ok' : data.scans.runningId ? 'wait' : 'todo']">
-        <span class="label">01 · Branch scan</span>
+    <ol
+      class="steps"
+      aria-label="Steps to merge this branch"
+    >
+      <li :class="['step', data.scans.upToDate ? 'ok' : data.scans.runningId ? 'wait' : 'todo']">
+        <span class="label">1 · Branch scan</span>
         <strong v-if="data.scans.runningId">Running</strong>
         <strong v-else-if="data.scans.upToDate">Up to date</strong>
         <strong v-else>To run</strong>
+        <span class="step-hint">{{ hints.scan }}</span>
         <NuxtLink
           v-if="data.scans.branch"
           :to="`/scans/${data.scans.branch.id}`"
-          class="mono small-link"
-        >scan #{{ data.scans.branch.id }}</NuxtLink>
+          class="small-link"
+        >Open scan #{{ data.scans.branch.id }}</NuxtLink>
         <button
           v-if="!data.scans.runningId && !data.scans.upToDate"
           class="ghost"
           :disabled="!!acting"
           @click="scanBranch"
         >
-          ▶ Scan
+          {{ acting === 'scan' ? 'Starting…' : '▶ Scan the branch' }}
         </button>
-      </div>
-      <div :class="['step', data.checks.state === 'success' ? 'ok' : ['failure', 'unavailable'].includes(data.checks.state) ? 'ko' : data.checks.state === 'pending' ? 'wait' : 'todo']">
-        <span class="label">02 · Preview</span>
+      </li>
+      <li :class="['step', data.checks.state === 'success' ? 'ok' : ['failure', 'unavailable'].includes(data.checks.state) ? 'ko' : data.checks.state === 'pending' ? 'wait' : 'todo']">
+        <span class="label">2 · Preview and checks</span>
         <strong>{{ ({ success: 'Green', failure: 'Failing', pending: 'Pending', none: 'No checks', unavailable: 'Unreadable' } as Record<string, string>)[data.checks.state] }}</strong>
+        <span class="step-hint">{{ hints.preview }}</span>
         <a
           v-if="data.preview"
           :href="data.preview"
           target="_blank"
           rel="noopener noreferrer"
-          class="mono small-link"
-        >↗ open the preview</a>
-      </div>
-      <div :class="['step', data.pr ? 'ok' : 'todo']">
-        <span class="label">03 · Approval</span>
+          class="small-link"
+        >Open the preview ↗</a>
+      </li>
+      <li :class="['step', data.pr ? 'ok' : 'todo']">
+        <span class="label">3 · Approval</span>
         <strong>{{ data.pr ? `PR #${data.pr.number}` : 'To approve' }}</strong>
+        <span class="step-hint">{{ hints.approval }}</span>
         <a
           v-if="data.pr"
           :href="data.pr.url"
           target="_blank"
           rel="noopener noreferrer"
-          class="mono small-link"
-        >↗ GitHub</a>
+          class="small-link"
+        >Open on GitHub ↗</a>
         <button
           v-else
           :disabled="!!acting || !data.scans.upToDate || !data.aheadBy"
           @click="openPr"
         >
-          ✓ Approve, open the PR
+          {{ acting === 'pr' ? 'Opening…' : '✓ Approve, open the PR' }}
         </button>
-      </div>
-      <div :class="['step', data.canMerge ? 'ready' : 'todo']">
-        <span class="label">04 · Merge</span>
+      </li>
+      <li :class="['step', data.canMerge ? 'ready' : 'todo']">
+        <span class="label">4 · Merge</span>
         <strong>{{ data.canMerge ? 'Ready' : 'Blocked' }}</strong>
+        <span
+          v-if="hints.merge"
+          class="step-hint"
+        >{{ hints.merge }}</span>
+        <!-- Why the merge is blocked, where the button is -->
+        <ul
+          v-else
+          class="step-blockers"
+        >
+          <li
+            v-for="b in blockers"
+            :key="b"
+          >
+            {{ b }}
+          </li>
+        </ul>
         <button
           :disabled="!data.canMerge || !!acting"
           @click="merge"
         >
-          ⇢ Squash merge
+          {{ acting === 'merge' ? 'Merging…' : '⇢ Squash merge' }}
         </button>
-      </div>
-    </section>
+      </li>
+    </ol>
     <section
       v-if="data.behindBy || data.conflicts"
       class="panel sync"
@@ -219,12 +256,13 @@ onUnmounted(() => clearInterval(timer))
         :disabled="!!acting"
         @click="update"
       >
-        {{ recreate ? '⟳ Recreate the fix' : `⟳ Update from ${data.base}` }}
+        {{ acting === 'update' ? 'Working…' : recreate ? '⟳ Recreate the fix' : `⟳ Update from ${data.base}` }}
       </button>
     </section>
     <p
       v-if="actionError"
       class="error"
+      role="alert"
     >
       ✕ {{ actionError }}
     </p>
@@ -234,17 +272,6 @@ onUnmounted(() => clearInterval(timer))
     >
       ✕ {{ data.checks.warning }}
     </p>
-    <ul
-      v-if="blockers.length"
-      class="blockers mono"
-    >
-      <li
-        v-for="b in blockers"
-        :key="b"
-      >
-        ✕ {{ b }}
-      </li>
-    </ul>
 
     <!-- Before / after -->
     <section
@@ -265,19 +292,26 @@ onUnmounted(() => clearInterval(timer))
           <span class="label">Unchanged</span><strong>{{ data.diff.remaining }}</strong>
         </div>
       </div>
+      <p
+        v-if="!data.diff.introduced.length && !data.diff.resolved.length"
+        class="help"
+      >
+        Same findings on both sides.
+      </p>
+      <!-- Index keys: the same rule can now show once per file -->
       <div
-        v-for="f in data.diff.introduced"
-        :key="`n-${f.tool}-${f.title}`"
+        v-for="(f, i) in data.diff.introduced"
+        :key="`n-${i}`"
         class="finding-line"
       >
-        <span class="mono ko">+ new</span><SevBadge :severity="f.severity" /><span>{{ f.title }}</span>
+        <span class="ko">New</span><SevBadge :severity="f.severity" /><span>{{ f.title }}</span><code class="mono muted">{{ f.location }}</code>
       </div>
       <div
-        v-for="f in data.diff.resolved"
-        :key="`r-${f.tool}-${f.title}`"
+        v-for="(f, i) in data.diff.resolved"
+        :key="`r-${i}`"
         class="finding-line"
       >
-        <span class="mono ok">− fixed</span><SevBadge :severity="f.severity" /><span class="muted">{{ f.title }}</span>
+        <span class="ok">Fixed</span><SevBadge :severity="f.severity" /><span class="muted">{{ f.title }}</span><code class="mono muted">{{ f.location }}</code>
       </div>
     </section>
     <section
@@ -323,7 +357,7 @@ onUnmounted(() => clearInterval(timer))
         :key="c.name"
         class="check-line mono"
       >
-        <span :class="['status', c.state === 'success' ? 'done' : c.state === 'failure' ? 'failed' : 'running']"><i />{{ c.state }}</span>
+        <span :class="['status', c.state === 'success' ? 'done' : c.state === 'failure' ? 'failed' : 'running']"><i />{{ checkLabel[c.state] ?? c.state }}</span>
         <a
           v-if="c.url"
           :href="c.url"
@@ -335,10 +369,8 @@ onUnmounted(() => clearInterval(timer))
       </div>
     </section>
 
-    <section class="panel">
-      <p class="label">
-        Commits · {{ data.commits.length }}
-      </p>
+    <details class="panel fold">
+      <summary>Commits · {{ data.commits.length }}</summary>
       <div
         v-for="c in data.commits"
         :key="c.sha"
@@ -348,12 +380,9 @@ onUnmounted(() => clearInterval(timer))
         <span>{{ c.message.split('\n')[0] }}</span>
         <span class="muted">{{ c.author }}</span>
       </div>
-    </section>
-
-    <section class="panel">
-      <p class="label">
-        Files · {{ data.files.length }}
-      </p>
+    </details>
+    <details class="panel fold">
+      <summary>Files changed · {{ data.files.length }}</summary>
       <details
         v-for="f in data.files"
         :key="f.filename"
@@ -381,20 +410,46 @@ v-for="(line, i) in f.patch.split('\n')"
           Diff too large for the GitHub API, see the PR.
         </p>
       </details>
-    </section>
-
+    </details>
     <section class="panel danger-zone">
       <p class="label">
-        Drop
+        Drop this branch
       </p>
       <button
         class="ghost danger"
         :disabled="!data.ref.startsWith('security/') || !!acting"
         @click="drop"
       >
-        ✕ Delete the branch
+        {{ acting === 'drop' ? 'Deleting…' : '✕ Delete the branch' }}
       </button>
-      <span class="muted mono">Only security/* branches can be deleted from here. Any open PR is closed.</span>
+      <span class="help">Only security/* branches can be deleted from here. Any open pull request is closed.</span>
     </section>
+
+    <ConfirmDialog
+      ref="mergeDialog"
+      :title="`Squash merge ${data.ref} into ${data.base}?`"
+      confirm-label="Squash merge"
+    >
+      <p>The {{ data.aheadBy }} commit{{ data.aheadBy === 1 ? '' : 's' }} of the branch become one commit on {{ data.base }}.</p>
+      <p>The branch is then deleted, production deploys, and {{ data.base }} is scanned again.</p>
+    </ConfirmDialog>
+    <ConfirmDialog
+      ref="dropDialog"
+      :title="`Delete ${data.ref}?`"
+      confirm-label="Delete the branch"
+      danger
+    >
+      <p>The branch is removed from GitHub{{ data.pr ? `, and pull request #${data.pr.number} is closed` : '' }}.</p>
+      <p>Its commits are lost unless they exist elsewhere.</p>
+    </ConfirmDialog>
+    <ConfirmDialog
+      ref="recreateDialog"
+      title="Recreate the fix?"
+      confirm-label="Recreate the fix"
+      danger
+    >
+      <p>{{ data.ref }} conflicts with {{ data.base }}. The fix is redone from the current {{ data.base }} on a new branch.</p>
+      <p>This branch is deleted{{ data.pr ? `, and pull request #${data.pr.number} is closed` : '' }}.</p>
+    </ConfirmDialog>
   </template>
 </template>

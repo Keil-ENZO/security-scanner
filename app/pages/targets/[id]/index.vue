@@ -22,34 +22,45 @@ onMounted(() => {
 })
 onUnmounted(() => clearInterval(timer))
 
-async function scan(b: Branch) {
+const { busy: acting, error: actionError, run } = useAction()
+const scan = (b: Branch) => run(`scan:${b.name}`, async () => {
   await $fetch(`/api/targets/${id}/scan`, { method: 'POST', body: b.isDefault ? {} : { ref: b.name } })
   await refresh()
-}
+})
 
 // Has the latest commit of the branch been scanned?
 const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.lastScan.sha === null)
 </script>
 
 <template>
-  <NuxtLink
-    to="/"
-    class="back"
-  >← Back</NuxtLink>
+  <BreadcrumbTrail :items="[{ label: 'Targets', to: '/' }, { label: target?.name ?? 'Target' }]" />
   <section
     v-if="target"
     class="scan-head"
   >
     <div>
-      <p class="label">
-        Target
-      </p>
       <h1>{{ target.name }}</h1>
-      <div class="meta mono">
-        <span v-if="target.repo">⎇ {{ target.repo }}</span>
-        <span v-if="target.url">⌁ {{ target.url }}</span>
-      </div>
+      <dl class="facts">
+        <div v-if="target.repo">
+          <dt>Repository</dt><dd class="mono">
+            {{ target.repo }}
+          </dd>
+        </div>
+        <div v-if="target.url">
+          <dt>Site</dt><dd class="mono">
+            {{ target.url }}
+          </dd>
+        </div>
+      </dl>
     </div>
+  </section>
+  <section
+    v-if="target && !target.repo"
+    class="panel"
+  >
+    <EmptyState title="No repository on this target">
+      Only the site is scanned. Branches, fixes and reviews need a GitHub repository. Scans of the site start from the home page.
+    </EmptyState>
   </section>
 
   <section
@@ -64,7 +75,7 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
         class="ghost"
         @click="refreshDeploy()"
       >
-        ↻
+        ↻ Refresh
       </button>
     </div>
     <div class="deploy-line mono">
@@ -76,7 +87,8 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
         :href="deploy.url"
         target="_blank"
         rel="noopener noreferrer"
-      >↗ {{ deploy.provider }}</a>
+        class="small-link"
+      >Open on {{ deploy.provider }} ↗</a>
     </div>
     <template v-if="deploy.state === 'failure'">
       <p class="muted">
@@ -95,10 +107,13 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
     </template>
   </section>
 
-  <section class="panel">
+  <section
+    v-if="target?.repo"
+    class="panel"
+  >
     <div class="panel-head">
       <p class="label">
-        GitHub branches
+        Branches
       </p>
       <button
         class="ghost"
@@ -119,8 +134,21 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
     >
       ✕ {{ errorMessage }}
     </p>
+    <p
+      v-if="actionError"
+      class="error"
+      role="alert"
+    >
+      ✕ {{ actionError }}
+    </p>
+    <p
+      v-if="data && !error"
+      class="help"
+    >
+      Scan a branch, then review it to compare it with {{ data.base }} and merge it.
+    </p>
     <div
-      v-else-if="data"
+      v-if="data && !error"
       class="rows"
     >
       <div
@@ -179,26 +207,27 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
             </NuxtLink>
             <span
               v-if="!fresh(b)"
-              class="muted mono stale"
-            >new commits since the scan</span>
+              class="stale"
+            >New commits since this scan</span>
           </template>
           <span
             v-else
-            class="muted mono"
-          >never scanned</span>
+            class="muted"
+          >Never scanned</span>
         </div>
         <div class="actions">
           <button
             class="ghost"
+            :disabled="!!acting"
             @click="scan(b)"
           >
-            ▶ Scan
+            {{ acting === `scan:${b.name}` ? 'Starting…' : '▶ Scan' }}<span class="sr-only"> {{ b.name }}</span>
           </button>
           <NuxtLink
             v-if="!b.isDefault"
             :to="`/targets/${id}/review?ref=${encodeURIComponent(b.name)}`"
             class="btn"
-          >Review →</NuxtLink>
+          >Review<span class="sr-only"> {{ b.name }}</span> →</NuxtLink>
         </div>
       </div>
     </div>
