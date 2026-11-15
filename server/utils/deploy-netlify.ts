@@ -92,6 +92,8 @@ function writeHeaders(content: string | undefined, headers: Record<string, strin
 export const netlifyProvider: DeployProvider = {
   label: 'Netlify',
   headersFile: 'netlify.toml',
+  logsConfig: ['netlifyToken'],
+  logsName: 'deploy error',
 
   // The item linking to a deploy page first: Netlify also posts header and redirect summaries
   async deployment(_repo, _sha, checks) {
