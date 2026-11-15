@@ -177,7 +177,7 @@ What it does not do:
 
 ## Fix, review, merge
 
-1. **Fix** pushes a `security/scan-N-fix-M` branch, then scans it. Nothing lands on the default branch.
+1. **Fix** says what it is about to do and asks for confirmation. It then pushes a `security/scan-N-fix-M` branch and scans it. Nothing lands on the default branch.
 2. **Branches**: the repository branches, read from GitHub. Each one can be scanned. A branch is only tested through its code: the live site is production.
 3. **Review**: branch scan compared with the default branch scan, preview deployment, commits, diff file by file.
 4. **Approve** opens the pull request.

@@ -135,7 +135,6 @@ button.danger:hover { border-color: var(--critical); color: var(--critical); }
 .sev-kpi.low { border-top-color: var(--low); } .sev-kpi.low strong { color: var(--low); }
 .sev-kpi.info { border-top-color: var(--info); } .sev-kpi.info strong { color: var(--info); }
 .sev-kpi.off strong { color: var(--muted); }
-.sev-kpi.selected { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border-strong); }
 
 /* Lists */
 .rows { display: flex; flex-direction: column; }
@@ -220,19 +219,21 @@ button.danger:hover { border-color: var(--critical); color: var(--critical); }
 .report li { counter-increment: item; display: grid; grid-template-columns: 32px 1fr; }
 .report li::before { content: counter(item, decimal-leading-zero); color: var(--accent-text); font: 12.5px var(--mono); padding-top: 1px; }
 
-.filters { display: flex; gap: 8px; }
-.filters select { font: 12px var(--mono); padding: 6px 10px; }
+.filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.filters label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 120px; min-width: 0; font-size: 12px; color: var(--muted); }
+.filters .filter-search { flex: 2 1 240px; }
+.filters input, .filters select { width: 100%; font: 12px var(--mono); padding: 6px 10px; }
 
 .finding { border-top: 1px solid var(--border); }
 .finding summary {
-  display: grid; grid-template-columns: 84px 80px 1fr minmax(0, 0.8fr); gap: 12px; align-items: center;
+  display: grid; grid-template-columns: 84px 80px minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; align-items: center;
   padding: 10px 8px; cursor: pointer; list-style: none;
 }
 .finding summary::-webkit-details-marker { display: none; }
 .finding summary:hover { background: var(--panel-2); }
 .finding[open] summary { background: var(--panel-2); }
 .finding .tool { color: var(--muted); font-size: 11.5px; }
-.finding .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finding .title { min-width: 0; overflow-wrap: anywhere; }
 .finding .loc { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
 dl {
   display: grid; grid-template-columns: 110px 1fr; gap: 6px 16px; margin: 0;
@@ -366,6 +367,49 @@ button.danger-fill { background: var(--critical); border-color: var(--critical);
 
 
 /* Scan page: rules of this page go under this line */
+/* A target without a repository has no page: its name is plain text, not the current page */
+.scan-page .breadcrumb li:not(:last-child) [aria-current] { color: inherit; }
+
+.scan-page .scan-head { flex-wrap: wrap; }
+.scan-title { flex: 1 1 320px; min-width: 0; }
+.scan-title .label { display: flex; align-items: center; gap: 8px; }
+.scan-title h1 { flex-wrap: wrap; overflow-wrap: anywhere; }
+.scan-facts { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 0; background: none; }
+.scan-facts dd { overflow-wrap: anywhere; }
+.sbom-link { color: var(--accent-text); text-decoration: underline; }
+
+/* The message of the server sits under the button, not across the page */
+.fix-action { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 320px; text-align: right; }
+.fix-steps { margin: 0 0 6px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.fix-panel pre, .fix-list li, .alert pre { overflow-wrap: anywhere; }
+.fix-panel pre { white-space: pre-wrap; }
+
+/* Severity tiles are toggles: a frame, a tint and a tick when one is on */
+.sev-filter { margin-bottom: 16px; }
+.sev-filter .kpis { margin-bottom: 6px; }
+.sev-kpi { position: relative; }
+.sev-kpi:disabled { opacity: 1; cursor: default; }
+.sev-kpi:disabled:hover { background: var(--panel); }
+.sev-kpi[aria-pressed="true"] {
+  background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent-text);
+  /* The top border keeps the colour of the severity */
+  border-right-color: var(--accent-text); border-bottom-color: var(--accent-text); border-left-color: var(--accent-text);
+}
+.sev-kpi[aria-pressed="true"]::after {
+  content: "✓"; position: absolute; top: 10px; right: 12px; color: var(--accent-text); font: 600 14px var(--sans);
+}
+/* Room for the button, so the list does not jump when a filter goes on */
+.findings-head { min-height: 28px; }
+.clear-filters { padding: 4px 10px; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .fix-action { align-items: flex-start; max-width: none; text-align: left; }
+  /* Tool and location stay readable: the title and the location take a full line each */
+  .finding summary { grid-template-columns: auto 1fr; }
+  .finding .tool { display: block; }
+  .finding .title, .finding .loc { display: block; grid-column: 1 / -1; }
+  .finding .loc { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+}
 
 
 /* Target and review pages: rules of these pages go under this line */
