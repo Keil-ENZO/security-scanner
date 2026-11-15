@@ -60,7 +60,7 @@ onUnmounted(() => clearInterval(timer))
     <section class="scan-head">
       <div>
         <p class="label">
-          // Scan #{{ String(data.scan.id).padStart(4, '0') }} · {{ data.scan.origin }}
+          Scan #{{ String(data.scan.id).padStart(4, '0') }} · {{ data.scan.origin }}
         </p>
         <NuxtLink
           v-if="data.scan.repo"
@@ -120,7 +120,7 @@ onUnmounted(() => clearInterval(timer))
     >
       <div class="panel-head">
         <p class="label">
-          // Fix #{{ f.id }} · {{ formatDate(f.created_at) }}
+          Fix #{{ f.id }} · {{ formatDate(f.created_at) }}
         </p>
         <StatusPill :status="f.status" />
       </div>
@@ -165,7 +165,7 @@ onUnmounted(() => clearInterval(timer))
       class="panel alert"
     >
       <p class="label">
-        // Errors
+        Errors
       </p>
       <pre>{{ data.scan.error }}</pre>
     </section>
@@ -175,7 +175,7 @@ onUnmounted(() => clearInterval(timer))
       :class="['panel', 'report', worst]"
     >
       <p class="label">
-        // Report
+        Report
       </p>
       <p class="verdict">
         {{ report.verdict }}
@@ -196,7 +196,7 @@ onUnmounted(() => clearInterval(timer))
     >
       <div class="panel-head">
         <p class="label">
-          // Findings · {{ filtered.length }} / {{ data.findings.length }}
+          Findings · {{ filtered.length }} / {{ data.findings.length }}
         </p>
         <div class="filters">
           <select v-model="tool">

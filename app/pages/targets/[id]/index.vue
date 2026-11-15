@@ -42,7 +42,7 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
   >
     <div>
       <p class="label">
-        // Target
+        Target
       </p>
       <h1>{{ target.name }}</h1>
       <div class="meta mono">
@@ -58,7 +58,7 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
   >
     <div class="panel-head">
       <p class="label">
-        // Production · {{ deploy.base }}
+        Production · {{ deploy.base }}
       </p>
       <button
         class="ghost"
@@ -98,7 +98,7 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
   <section class="panel">
     <div class="panel-head">
       <p class="label">
-        // GitHub branches
+        GitHub branches
       </p>
       <button
         class="ghost"
