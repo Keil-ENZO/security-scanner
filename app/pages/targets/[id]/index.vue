@@ -6,7 +6,7 @@ interface Branch { name: string, sha: string, isDefault: boolean, protected: boo
 const route = useRoute()
 const id = route.params.id as string
 const { data: target } = await useFetch<Target>(`/api/targets/${id}`)
-interface Deploy { base: string, sha: string, message: string, date: string, state: string, url: string | null, description: string | null, logs: string | null }
+interface Deploy { provider: string, base: string, sha: string, message: string, date: string, state: string, url: string | null, description: string | null, logs: string | null, logsHint: string | null }
 const { data: deploy, refresh: refreshDeploy } = await useFetch<Deploy>(`/api/targets/${id}/deploy`, { lazy: true })
 const deployLabel: Record<string, string> = { success: 'Live', failure: 'Failed', pending: 'Pending', none: 'No deployment', unavailable: 'Unreadable' }
 const { data, error, refresh, status } = await useFetch<{ base: string, branches: Branch[] }>(`/api/targets/${id}/branches`, { lazy: true })
@@ -76,7 +76,7 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
         :href="deploy.url"
         target="_blank"
         rel="noopener noreferrer"
-      >↗ Vercel</a>
+      >↗ {{ deploy.provider }}</a>
     </div>
     <template v-if="deploy.state === 'failure'">
       <p class="muted">
@@ -87,10 +87,10 @@ const fresh = (b: Branch) => !!b.lastScan && (b.lastScan.sha === b.sha || b.last
         class="patch build-log"
       >{{ deploy.logs }}</pre>
       <p
-        v-else
+        v-else-if="deploy.logsHint"
         class="muted mono"
       >
-        Set NUXT_VERCEL_TOKEN to see the build log here.
+        {{ deploy.logsHint }}
       </p>
     </template>
   </section>

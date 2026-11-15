@@ -38,6 +38,7 @@ export const cloudflareProvider: DeployProvider = {
   // Pages serves _headers from the build output directory. Nuxt, Vite, Next, Astro and Remix copy
   // public/ there as is. SvelteKit, Gatsby and Hugo use static/: not covered, the file is ignored
   headersFile: 'public/_headers',
+  logsConfig: ['cloudflareToken', 'cloudflareAccountId'],
 
   // One more GitHub call to read the run output, once the build is over: the preview URL goes in
   // the notification, the ids give the log. Skipped while pending, which is most watchDeploy ticks

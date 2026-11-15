@@ -6,8 +6,10 @@ export async function productionDeploy(t: TargetRepo) {
   const head = await githubApi<{ sha: string, commit: { message: string, author: { date: string } } }>(`/repos/${repo}/commits/${encodeURIComponent(base)}`)
   const checks = await checksFor(repo, head.sha)
   const d = await provider.deployment(repo, head.sha, checks)
-  const logs = d?.state === 'failure' ? await provider.logs(d).catch(() => null) : null
+  const failed = d?.state === 'failure'
+  const logs = failed ? await provider.logs(d).catch(() => null) : null
   return {
+    provider: provider.label,
     base,
     sha: head.sha,
     message: head.commit.message.split('\n')[0],
@@ -16,6 +18,8 @@ export async function productionDeploy(t: TargetRepo) {
     url: d?.url ?? null,
     description: d?.description ?? null,
     logs,
+    // Only when the provider reported the failure: a red CI check has no build log
+    logsHint: failed && !logs ? logsHint(provider) : null,
   }
 }
 

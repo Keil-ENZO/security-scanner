@@ -53,6 +53,7 @@ export default defineEventHandler(async (event) => {
     checks,
     preview: deployment?.state === 'success' ? deployment.url : null,
     previewLogs,
+    previewLogsHint: deployment?.state === 'failure' && !previewLogs ? logsHint(provider) : null,
     // false: conflicts with the base. null: GitHub is still computing
     conflicts: merge?.mergeable === false || merge?.state === 'dirty',
     pr: pr ? { number: pr.number, url: pr.html_url, draft: pr.draft } : null,
