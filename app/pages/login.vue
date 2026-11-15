@@ -23,6 +23,10 @@ async function submit() {
 </script>
 
 <template>
+  <BrandMark
+    class="login-mark"
+    :size="64"
+  />
   <form
     class="panel login"
     @submit.prevent="submit"
@@ -55,3 +59,9 @@ async function submit() {
     </p>
   </form>
 </template>
+
+<style scoped>
+/* The mark takes over the top spacing of the form, so both stay centred as one block */
+.login-mark { margin: 12vh auto 0; }
+.login { margin-top: 24px; }
+</style>

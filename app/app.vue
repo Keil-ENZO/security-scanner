@@ -15,8 +15,9 @@ async function logout() {
       <NuxtLink
         to="/"
         class="brand"
+        aria-label="Security Scanner"
       >
-        <span class="brand-mark">◆</span>
+        <BrandMark />
         <span>SECURITY<b>SCANNER</b></span>
       </NuxtLink>
       <div class="topbar-right">
