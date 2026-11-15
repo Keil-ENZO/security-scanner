@@ -17,9 +17,10 @@ defineProps<{ items: { label: string, to?: string }[] }>()
           v-if="item.to"
           :to="item.to"
         >{{ item.label }}</NuxtLink>
+        <!-- Only the last item is the page itself. A middle item can have no link, such as a target without repository -->
         <span
           v-else
-          aria-current="page"
+          :aria-current="i === items.length - 1 ? 'page' : undefined"
         >{{ item.label }}</span>
       </li>
     </ol>
