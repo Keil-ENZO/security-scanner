@@ -152,7 +152,10 @@ export function managerCommands(m: Manager): Commands {
     return {
       bin: 'npm',
       env: {},
-      lock: ['install', '--package-lock-only', ...NPM_FLAGS],
+      // npm 12 defaults allow-remote to none and treats some registry tarballs as remote while
+      // resolving: bundled deps of optional packages, like @tailwindcss/oxide-wasm32-wasi.
+      // Scripts stay off. The verify step keeps the default, the way the host installs
+      lock: ['install', '--package-lock-only', '--allow-remote=all', ...NPM_FLAGS],
       verify: ['ci', '--dry-run', ...NPM_FLAGS],
       conflict: /ERESOLVE/,
     }

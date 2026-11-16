@@ -65,6 +65,12 @@ describe('managerCommands', () => {
     expect(y.verify).toEqual(['yarn@4', 'install', '--immutable', '--mode=skip-build'])
   })
 
+  it('lets npm 12 lock registry tarballs it parses as remote, scripts off', () => {
+    const n = managerCommands({ kind: 'npm' } as Parameters<typeof managerCommands>[0])
+    expect(n.lock).toEqual(expect.arrayContaining(['--package-lock-only', '--allow-remote=all', '--ignore-scripts']))
+    expect(n.verify).not.toContain('--allow-remote=all')
+  })
+
   it('lets corepack read the exact version from packageManager', () => {
     const pinned = manager(detectManager({ packageManager: 'pnpm@10.34.9' }, files({ 'pnpm-lock.yaml': fixture('pnpm-9.yaml') })))
     expect(managerCommands(pinned).lock[0]).toBe('pnpm')
